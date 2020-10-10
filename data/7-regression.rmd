@@ -1,0 +1,499 @@
+---
+title: "7-regression.rmd"
+author: "Florian Bayer"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+---
+
+*************************
+# Objectifs de l'exercice
+*************************
+
+Dans l'exercice 6, vous avez calculez les corrélations entre vos différentes variables. Vous allez maintenant modéliser ses relations à l'aide de la régression linéaire.
+
+Après avoir vérifié la validité du modèle, vous calculerez les résidus du modèle (l'écart entre les valeurs observées et les valeurs prédites par le modèle).
+
+**********************************************
+# 1-Installation et/ou chargement des packages
+**********************************************
+
+Nous utiliserons les packages ggplot2, dplyr et Hmisc
+```{r setup, include=FALSE}
+
+# On change notre manière de travailler en créant une fonction qui permet d'appeler le code défini dans la fonction quand on le souhaite.
+
+#Une fonction n'est pas traitée tant qu'elle n'est pas appelée. Donc dans un premier temps, on la "déclare" : InstallPackages est une fonction (InstallPackages <- function()) qui contient du code (la partie entre les {}) et une variable, list.
+
+# list nne vaut rien tant qu'on n'a pas appelé la fonction. Remarquez qu'elle est présente dans le bloc de code.
+
+InstallPackages <- function (list) {
+  for(p in list){
+    if(!require(p,character.only = TRUE)) install.packages(p)
+    library(p,character.only = TRUE)
+  }
+}
+
+# On renseigne dans requiredPackages les packages R que l'on souhaite utiliser dans le document 
+# Il s'agit d'une liste au format : c(valeur_1,valeur_2,...,valeur_n) 
+requiredPackages = c('ggplot2','dplyr','Hmisc')
+
+# On appelle la fonction InstallPackages et on précise que list correspond à la liste requiredPackages
+InstallPackages(list = requiredPackages)
+
+rm(requiredPackages)
+```
+
+**************************************
+# 2-Création de la régression linéaire
+**************************************
+
+Faire une régression linéaire sous R est très facile. On utilise les fonction lm() et summary() qui sont fournies par défaut avec R.
+
+L'exemple ci-dessous est basé sur le jeu de données mtcars. On souhaite modéliser l'autonomie des voitures (mpg) en fonction de leur poids (wt). On pose l'hypothèse que plus le poids est faible, plus l'autonomie est importante. Les blocs de codes ci-dessous, qui contiennent le nuage de points et les coefficients de corrélation entre les deux variables, confirment cette hypothèse : 
+
+```{r 7.1_plot_exemple}
+
+# le nuage de points de l'autonomie en fonction du poids
+ggplot(data = mtcars, aes(x=wt, y=mpg)) +
+  geom_point()+
+  theme(aspect.ratio=1)    
+
+```
+
+```{r 7.2_pearson_exemple}
+
+# Le coefficient de corrélation de Bravais Pearson
+
+rcorr(x = as.matrix(mtcars[,c(1,6)]),# Notez qu'on ne fait le calcul que pour les colonnes 1 et 6 du dataframe mtcars en écrivant mtcars[,c(1,6)]
+      type = "pearson")
+
+```
+
+```{r 7.3_spearman_exemple}
+
+# Le coefficient de corrélation de Spearman
+
+rcorr(x = as.matrix(mtcars[,c(1,6)]),# Notez qu'on ne fait le calcul que pour les colonnes 1 et 6 du dataframe mtcars en écrivant mtcars[,c(1,6)]
+      type = "spearman")
+
+```
+On constate que le coefficient de corrélation de Spearman est un peu meilleur que le Bravais-Pearson. La relation semble légèrement non linéaire comme le montre le nuage de points.
+
+
+On décide toutefois de faire une régression linéaire : 
+```{r 7.4_DroiteRegression_plot_exemple}
+
+# On recrée un nuage de points, mais en y ajoutant la droite de régression à l'aide de geom_smooth(). 
+
+ggplot(mtcars, aes(wt, mpg)) +
+  geom_point() +
+  geom_smooth(method = "lm", # on précise que l'on souhaite un Linear Model (lm)
+              se = FALSE) # Sans afficher l'interval de confiance pour le moment
+
+```
+La droite de régression semble résumer assez bien le nuage de points.
+
+
+On calcule ensuite le modèle linéaire à l'aide de lm(). On applique alors la fonction summary() qui permet d'évaluer le modèle
+```{r 7.5_modele_exemple}
+
+# On stocke dans une variable modele le contenu de la fonction lm().
+modele <- lm(mpg ~ wt, # Il s'agit d'une formule sous R, qui revient à dire : y en fonction de x, soit l'autonomie mpg en fonction du poids wt
+            data = mtcars) # le dataframe qui contient x et y
+
+
+# la fonction summary() fournit plusieurs informations sur le modèle 
+summary(modele)
+
+```
+
+L'interprétation des résultats de summary se fait de la façon suivante :
+
+-Call est un rappel du modèle utilisé.
+
+-Residuals est une analyse univariée des résidus. Cette partie peut être associée avec Residual standard error. Plus les résidus sont proches de 0, meilleur est le modèle.
+
+-Coefficients contient plusieurs informations sous forme d'un tableau :
+
+  *(Intercept) est l'ordonnée à l'origine du modèle. A votre niveau, vous ne vous intéresserez qu'à la colonne Estimate, soit 37.2 pour votre modèle. Cela veut dire que votre modèle aura pour équation : y = ax + 37.2
+  
+  * wt et sa colonne Estimate correspond au coefficient directeur de votre équation, -5.3 dans le modèle. Il s'agit donc de l'augmentation moyenne de y quand x augmente de 1. Autrement dit, quand le poid augmente d'une unité, l'autonomie baisse en moyenne de 5.3 unités (-5.3). Votre équation sera donc y = -5.3x +37.2. On s'intéresse aussi à la colonne Pr(>|t|) qui correspond à la p-value du coefficient directeur. Elle est ici très faible : 1.29e-10 ou encore 0,0000000129%. Le nombre d'étoile à côté (***) correspond à une mesure rapide et visuelle la significativité. Cette valeur Pr(>|t|) nous sera très utile pour la régression multiple.
+  
+-Deux r² sont disponibles : Multiple R-squared:  0.7528 et	Adjusted R-squared:  0.7446. Analysez toujourq ce dernier, qui est égale à 0.74.
+
+-La F-statistic et surtout la p-value permettent de mesurer la significativité de votre r². De nouveau vous pouvez rejeter H0 avec une très forte confiance : 0,00000001294% de rejeter H0 à tort... 
+
+
+***********************
+# 3-Analyse des résidus
+***********************
+
+Il est maintenant nécessaire de valider les résidus. Pour cela, on va créer un nouveau dataframe qui contiendra : 
+*les données réelles
+*les données calculées par le modèle grâce à l'équation y = -5.3x +37.2, ou encore mpg = -5.3wt + 37.2
+*les résidus entre les données les données réelles et calculées par le modèle (soit mpg réel et mpg calculé)
+```{r 7.6_residus_exemple}
+
+# D'abord on crée un dataframe à partir de mtcars, mais uniquement les colonnes wt et mpg (x et y dans notre modèle)
+df.residus <- dplyr::select(.data = mtcars, wt, mpg)
+
+# On en profite pour ajouter une colonne ID qui contient les noms des lignes. Elle servira aux jointures suivantes
+df.residus$ID <- rownames(mtcars) #mtcars ne possède pas une colonne avec des codes, mais uniquement des noms de lignes. C'est pour cela qu'on stock ces noms (rownames) dans une nouvelle colonne, ID
+
+# On fait une jointure avec merge() entre le dataframe précédent et les valeurs calculées du modèle. On précise que ces données seront au format dataframe grâce à as.data.frame(). Enfin, la jointure se fait sur la colonne ID précédemment créé et sur les noms des lignes pour modele$fitted.values, ce qui s'écrit by.y = 0 
+
+df.residus <- merge(x=df.residus,
+                    y=as.data.frame(modele$fitted.values),
+                    by.x = "ID",
+                    by.y=  0)
+
+#On renomme la colonne modele$fitted.values qui vient d'être créée, pour la rendre plus compréhensible. Pour cela on utilise une fonction de dplyr : rename()
+df.residus <- dplyr::rename(.data = df.residus, # le dataframe à utiliser
+                            mpg_calcule = `modele$fitted.values` # le nouveau nom de la colonne = ancien nom. Les` ` (altgr+7) sont importants
+                            )
+
+# On refait la même chose pour avoir les résidus dans notre dataframe.
+df.residus <- merge(x=df.residus,
+                    y=as.data.frame(modele$residuals),
+                    by.x = "ID",
+                    by.y=  0)
+
+#On renomme également la colonne modele$residuals qui vient d'être créée.
+df.residus <- dplyr::rename(.data = df.residus, 
+                            mpg_residus = `modele$residuals`
+                            )
+```
+Vous pouvez ouvrir le dataframe df.residus afin de voir la différence pour chaque voiture entre l'autonomie réelle (mpg) et l'autonome calculée (mpg_calcule). Cette différence est résumée dans mpg_residus : plus ils sont proches de zéro, meilleur est l'adéquation du modèle avec la réalité.
+
+
+Enfin, il est nécessaire de vérifier la bonne tenue des résidus :
+
+1. les résidus ont une distribution "normale"
+2. homoscédasticité des résidus
+3. pas d’autocorrélation des résidus
+4. continuité de la distribution des résidus
+
+Pour cela et à votre niveau, vous pouvez vous contenter de deux graphiques
+
+Le premier permet de vérifier la normalité des résidus. On utilise ggplot() avec geom_histogram() que vous avez déjà utilisé. On ajoute une fonction un peu plus complexe, stat_function(), qui permet de visualiser ce que serait les valeurs de mpg_residus si elles suivaient une loi normale. Cela premet de comparer la distribution des résidus avec une distribution normale. Si les deux sont proches, alors vos résidus suivent une loi normale. 
+```{r 7.7_Normalité_residus_exemple}
+
+# On crée un object ggplot() avec en x les résidus
+
+ggplot(df.residus, aes(x = mpg_residus)) + # On crée un object ggplot() avec en x les résidus
+  
+    geom_histogram(aes(y =..density..), # On crée un histogramme en calculant la densité de mpg_residus
+                   colour = "black", 
+                   fill = "white")+
+  
+    xlim(c(-max(df.residus$mpg_residus), # On modifie les limites min et max de x pour bien centrer le graphique. On calcule le maximum de mpg_residus qu'on passe en négatif. Il s'agira de la borne inférieure des abscisses. 
+           max(df.residus$mpg_residus)))+ #On fait de même pour la borne maximum des abscisses, mais en gardant le max positif
+  
+  # enfin on ajoute une courbe qui suivra une loi normale et qui a la même moyenne que mpg_residus et le même ecart-type
+  stat_function(fun = dnorm, 
+                args = list(mean = mean(df.residus$mpg_residus), sd = sd(df.residus$mpg_residus)),
+                color = "red" )  # la courbe sera rouge
+
+```
+On s'aperçoit que les résidus (l'histogramme) ne suivent pas une loi normale, représentée par la courbe rouge. Cela s'explique aussi par le faible nombre de valeurs (une trentaine).
+
+
+On poursuit néanmoins l'analyse en créant un second graphique pour vérifier l'homoscédasticité, l'absence d'autocorrélation et la continuité des résidus
+```{r 7.8_Validation_residus_exemple}
+
+# On crée un object ggplot() avec en x les résidus, en y les identifiants des lignes. On y ajoute une couleur de remplissage, qui se fera en fonction de la colonne des résidus
+ggplot(df.residus, aes(y=mpg_residus,x=ID, fill = mpg_residus)) +
+  geom_point(shape=21, size =4)+ # on ajoute ensuite des cercles (shape 21) de taille 4
+  geom_hline(yintercept = 0)+ # On ajoute une ligne verticale sur x=0 (la moyenne des résidus)
+  theme(axis.text.x=element_text(angle=90, hjust=1))+ # on affiche les libellés en x à la verticale
+  scale_fill_gradient2(low="darkgreen", mid="white", high="darkred") # on remplit les cercles d'un gradient du vert au rouge en passant par du blanc au niveau du 0
+   
+```
+Les résidus les plus clairs sont ceux qui sont le mieux modélisés. En rouge, le modèle sous-estime la réalité. En vert le modèle surestime la réalité.
+
+Les résidus on l'air distribués aléatoirement sur le graphique. Il n'y a pas d'autocorrélation (les résidus formeraient un U ou un V) et il n'y a pas de valeurs extêmes isolées.
+
+
+
+**************************************
+# 4-Application à votre jeu de données
+**************************************
+
+Vous êtes maintenant en mesure de créer vous-même une régression linéaire à partir de vos données. Les blocs de codes ont été préparés ci-dessous pour vous aider. Reprenez au moins une relation étudiée dans l'exercice 6-correlation.rmd (celle qui vous semble la plus pertinente à la lecture de vos résultats de corrélation). 
+
+Complétez les blocs de codes avec vos données et commentez chaque résultat.
+
+##Le nuage de points
+```{r 7.9_plot}
+
+# Pensez à charger votre dataframe contenant les variables X et Y
+
+
+# le nuage de points de x et y
+ggplot(data = votreDataframe, aes(x=VotreVariableX, y=VotreVariableY)) +
+  geom_point()+
+  theme(aspect.ratio=1)    
+
+```
+
+##Coefficient de corrélation de Bravais-Pearson
+```{r 7.10_pearson}
+
+# Le coefficient de corrélation de Bravais Pearson
+
+rcorr(x = as.matrix(votreDataframe),# Pensez à faire le calcul sur les colonnes X et Y de votre dataframe. Par exemple mtcars[,c(1,6)]
+      type = "pearson")
+
+```
+
+##Coefficient de corrélation de Spearman
+```{r 7.11_spearman}
+
+# Le coefficient de corrélation de Spearman
+
+rcorr(x = as.matrix(votreDataframe),
+      type = "spearman")
+
+```
+
+##La droite de régression
+```{r 7.12_DroiteRegression_plot}
+
+# On recrée un nuage de points, mais en y ajoutant la droite de régression à l'aide de geom_smooth(). 
+
+ggplot(votreDataframe, aes(x=VotreVariableX, y=VotreVariableY)) +
+  geom_point() +
+  geom_smooth(method = "lm", # on précise que l'on souhaite un Linear Model (lm)
+              se = FALSE) # Sans l'interval de confiance pour le moment
+
+```
+
+## Le modèle linéaire
+```{r 7.13_modele}
+
+# On stocke dans une variable modele le contenu de la fonction lm().
+modele <- lm(VotreVariableY ~ VotreVariableX,
+            data = votreDataframe) 
+
+# la fonction summary() fournit plusieurs informations sur le modèle 
+summary(modele)
+```
+
+## Les résidus
+### le dataframe avec les résidus
+```{r 7.14_residus}
+
+# D'abord on crée un dataframe avec les variables dépendantes et indépendantes de votre étude, ainsi que le code des communes (pour la cartographie des résidus).
+
+df.residus <- dplyr::select(.data = votreDataframe, CODGEO, VotreVariableX, VotreVariableY)
+
+# On en profite pour ajouter une colonne ID qui contient les numéros des lignes. Elle servira aux jointures suivantes.
+df.residus$ID <- rownames(votreDataframe)
+
+# On fait une jointure avec merge() entre le dataframe précédent et les valeurs calculées du modèle. On précise que ces données seront au format dataframe grâce à as.data.frame(). Enfin, la jointure se fait sur la colonne ID précédemment créé et sur les noms des lignes pour modele$fitted.values, ce qui s'écrit by.y = 0 
+
+# Vous n'avez pas à modifier cette partie
+df.residus <- merge(x=df.residus,
+                    y=as.data.frame(modele$fitted.values),
+                    by.x = "ID",
+                    by.y=  0)
+
+#On renomme la colonne modele$fitted.values qui vient d'être créée, pour la rendre plus compréhensible. Pour cela on utilise une fonction de dplyr : rename()
+
+# Vous devez renommer VotreColonneCalulee
+df.residus <- dplyr::rename(.data = df.residus, # le dataframe à utiliser
+                            VotreColonneCalculee = `modele$fitted.values` # le nouveau nom de la colonne = ancien nom. Les` ` (altgr+7) sont importants
+                            )
+
+# On refait la même chose pour avoir les résidus dans notre dataframe. # Vous n'avez pas à modifier cette partie
+df.residus <- merge(x=df.residus,
+                    y=as.data.frame(modele$residuals),
+                    by.x = "ID",
+                    by.y=  0)
+
+#On renomme également la colonne modele$residuals qui vient d'être créée.
+# Vous devez renommer VotreColonneResidus
+df.residus <- dplyr::rename(.data = df.residus, 
+                            VotreColonneResidus = `modele$residuals`
+                            )
+```
+
+### Vérification de la normalité
+```{r 7.15_Normalité_residus}
+
+# On crée un object ggplot() avec en x les résidus. 
+
+# Pensez à changer les noms de VotreColonneResidus
+
+ggplot(df.residus, aes(x = VotreColonneResidus)) +
+    geom_histogram(aes(y =..density..),
+                   colour = "black", 
+                   fill = "white")+
+  
+    xlim(c(-max(df.residus$VotreColonneResidus),
+           max(df.residus$VotreColonneResidus)))+
+
+  stat_function(fun = dnorm, 
+                args = list(mean = mean(df.residus$VotreColonneResidus), sd = sd(df.residus$VotreColonneResidus)),
+                color = "red" )  
+
+```
+
+### Vérification des autres conditions
+```{r 7.16_Validation_residus}
+
+# On crée un objet ggplot() avec en x les résidus, en y les identifiants des lignes. On y ajoute une couleur de remplissage, qui se fera en fonction de la colonne des résidus
+
+# Pensez à changer les noms de VotreColonneResidus
+
+ggplot(df.residus, aes(y=VotreColonneResidus,x=ID, fill = VotreColonneResidus)) +
+  geom_point(shape=21, size =4)+ # on ajoute ensuite des cercles (shape 21) de taille 4
+  geom_hline(yintercept = 0)+ # On ajoute une ligne verticale sur x=0 (la moyenne des résidus)
+  theme(axis.text.x=element_text(angle=90, hjust=1))+ # on affiche les libellés en x à la verticale
+  scale_fill_gradient2(low="darkgreen", mid="white", high="darkred") # on remplit les cercles d'un gradient du vert au rouge en passant par du blanc au niveau du 0
+   
+```
+Vous pouvez évidemment sauvegarder toutes les images en faisant un clic-droit dessus --> sauvegarder sous.
+
+# Fonction tout-en-un
+
+Si vous le souhaitez, vous pouvez tester d'autres régressions linéaires en fonction de vos résultats de corrélations.  Pour cela, une fonction ALLlm() a été créée et permet d'afficher tous les résultats des analyses précédentes (sauf la corrélation).
+
+L'avantage d'une fonction est de pouvoir obtenir des résultats rapidement, sans avoir à dupliquer le code. On crée généralement des fonctions quand on doit appliquer plusieurs fois le même code, mais sur des données différentes. Ici, on renseignera dans ALLlm() :
+*le dataframe,
+*le code géographique,
+*la variable x,
+*la variable y de votre modèle linéaire,
+*le nom de votre dataframe contenant les résidus. Il sera sauvegardé dans votre espace de travail.
+
+Une fois la fonction appelé (cf. 7.18) tous les résultats s'afficheront. Vous pourrez ainsi facilement voir les résultats de différents modèles.
+
+La première partie de la fonction ALLlm ci-dessous n'a pas à être modifiée. Vous pouvez la parcourir, pour vous rendre compte qu'elle contient les différents codes traités précédemment. Il faut néanmoins lancer le bloc de code de la fonction afin de "charger" cette dernière en mémoire.
+
+## Déclaration de la fonction
+```{r 7.17_ALLlm}
+
+ALLlm <- function (Dataframe,CODGEO,VariableX,VariableY,VosResidus) {
+
+  # Création d'un nouveau dataframe
+  df <- data.frame(CODGEO,VariableX,VariableY)
+  
+  # nuage de points avec la droite de régression à l'aide de geom_smooth(). 
+  gg1 <- ggplot(Dataframe, aes(x=VariableX, y=VariableY)) + geom_point() + geom_smooth(method = "lm",se = FALSE) +
+    ggtitle(paste("Droite de régression"))
+  
+  ## Le modèle linéaire : on stocke dans une variable modele le contenu de la fonction lm().
+  modele <- lm(VariableY ~ VariableX,data = Dataframe) 
+  
+  # la fonction summary() fournit plusieurs informations sur le modèle 
+  sum1 <- summary(modele)
+  
+  ## Les résidus
+  ### le dataframe avec les résidus
+  
+  # D'abord on crée un dataframe avec les variables dépendantes et indépendantes de votre étude, ainsi que le code des communes (pour la cartographie des résidus).
+  df.residus <- df %>% dplyr::select(CODGEO,VariableX,VariableY)
+  
+  # On en profite pour ajouter une colonne ID qui contient les numéros des lignes. Elle servira aux jointures suivantes.
+  df.residus$ID <- rownames(df)
+  
+  # On fait une jointure avec merge() entre le dataframe précédent et les valeurs calculées du modèle. On précise que ces Données seront au format dataframe grâce à as.data.frame(). Enfin, la jointure se fait sur la colonne ID précédemment créé et sur les noms des lignes pour modele$fitted.values, ce qui s'écrit by.y = 0 
+  
+  df.residus <- merge(x=df.residus,y=as.data.frame(modele$fitted.values),by.x = "ID",by.y=  0)
+  
+  #On renomme la colonne modele$fitted.values qui vient d'être créée, pour la rendre plus compréhensible. Pour cela on utilise une fonction de dplyr : rename()
+  
+  df.residus <- dplyr::rename(.data = df.residus,Ycalcules = `modele$fitted.values`)
+  
+  # On refait la même chose pour avoir les résidus dans notre dataframe.
+  df.residus <- merge(x=df.residus,y=as.data.frame(modele$residuals),by.x = "ID",by.y=  0)
+  
+  #On renomme également la colonne modele$residuals qui vient d'être créée.
+  df.residus <- dplyr::rename(.data = df.residus,Residus = `modele$residuals`)
+  
+  ### Vérification de la normalité. On crée un object ggplot() avec en x les résidus. 
+  
+  gg2 <- ggplot(df.residus, aes(x = Residus)) + geom_histogram(aes(y =..density..),colour = "black",fill = "white")+
+    xlim(c(-max(df.residus$Residus),max(df.residus$Residus)))+
+    stat_function(fun = dnorm,args = list(mean = mean(df.residus$Residus), sd = sd(df.residus$Residus)),color = "red" )+
+    ggtitle(paste("Normalité des résidus"))
+  
+  ### Vérification des autres conditions. On crée un objet ggplot() avec en x les résidus, en y les identifiants des lignes.
+  
+  gg3 <- ggplot(df.residus, aes(y=Residus,x=ID, fill = Residus)) +geom_point(shape=21, size =4)+  geom_hline(yintercept = 0)+ 
+    theme(axis.title.x=element_blank(),axis.text.x=element_blank(),axis.ticks.x=element_blank())+
+    scale_x_discrete(breaks = NULL)+
+    scale_fill_gradient2(low="darkgreen", mid="white", high="darkred")+
+    ggtitle(paste("Répartition des résidus"))
+
+  NomDFResidus <- as.character(VosResidus)
+  df.residus <- dplyr::select(df.residus, -c(ID)) 
+
+  assign(NomDFResidus, df.residus, envir=.GlobalEnv)
+  
+return (list(gg1,sum1,gg2,gg3))
+
+  }
+
+```
+
+## L'appel de la fonciton
+La fonction ALLlm() étant chargéee, il ne reste plus qu'à l'appeler. Vous avez déjà appelé des fonctions (summary(), select() etc.), mais sans voir le code qui les compose. Ce code est en effet contenu dans les packages.
+
+On appelle donc ALLlm() comme toutes les autres fonctions, en passant des variables dans les paramètres. 
+```{r 7.18_AppelALLlm}
+
+# On fait un test avec le dataframe presid2017
+df.exemple <- dplyr::filter(presid2017, CODDEP == '77')
+
+
+ALLlm(votreDataframe = df.exemple, #le dataframe à utiliser
+      VotreCODGEO = as.character(df.exemple$CODGEO), #la colonne qui contient le codgeo 
+      VotreVariableX = df.exemple$P2017T1_ABST, # la colonne qui contient les X
+      VotreVariableY = df.exemple$P2017T2_ABST,# la colonne qui contient les Y
+      VosResidus = "NomDeVotreDFdesResidus") # Le noms du dataframe qui contiendra les résultats. Il sera sauvegardé dans votre espace de travail (CF. 7.20)
+
+```
+
+```
+
+Vous devriez obtenir 1 résumé (le résultat de summary) et 3 graphiques. Vous pouvez changer les paramètres de ALLlm() afin de travailler sur vos propres données.
+
+
+# Annexe : export des données
+
+Une fois vos calculs terminés, vous pouvez sauvegarder vos dataframes pour les réutiliser plus tard si besoin. Par exemple pour la production des cartes où pour ne pas à avoir à relancer l'ensemble de votre code lorsque vous démarrez une nouvelle session de travail. 
+
+Vous pouvez exporter au format RData, qui sont très simples à charger. Un second exemple vous montre comment sauvegarder au format Excel.
+
+## En RData
+```{r 7.19_Sauvegarde_dataframe_RData}
+
+# Vous pouvez sauvegarder plusieurs dataframes dans un même fichier RData. Il suffit de mettre son nom après df.residus... par exemple save(df.residus, df.toto, df.woulou
+
+# file = correspond au nom du fichier RData. Il sera sauvegardé par défaut dans votre espace de travail courant (celui qui est présent dans l'explorateur de fichier en bas à droite de RStudio). 
+
+#Sinon, vous pouvez taper la commande getwd() pour connaitre votre espace de travail. Vous pouvez aussi renseigner un chemin complet : file = "C;/votredossier/VotreDataframe.RData"
+save(df.residus, file = "VotreDataframe.RData") 
+
+```
+
+## En Excel
+```{r 7.20_Sauvegarde_dataframe_excel}
+
+# Vous pouvez aussi sauvegarder au format Excel à l'aide du package openxlsx (le package readxl utilisé pour charger un xls dans R ne permet pas d'exporter de R vers Excel)
+
+#On appelle la fonction InstallPackages pour installer openxlsx. 
+InstallPackages("openxlsx")
+
+# On export le dataframe dans un xlsx, comme le RData précédent.
+openxlsx::write.xlsx(df.residus, file = "df_residus.xlsx")
+
+```
+
+

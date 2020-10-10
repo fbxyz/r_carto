@@ -1,0 +1,211 @@
+---
+title: "3 : R, les dataframes"
+author: "Florian Bayer"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+---
+
+*************************
+# Objectifs de l'exercice
+*************************
+Dans le préambule, nous avons abordé les tableaux ou dataframes en chargeant le jeu de données mtcars, fourni avec R.
+
+Nous allons maintenant charger notre propre tableau dans une variable et à partir d'un fichier présent sur votre ordinateur. Cette variable sera alors du type dataframe. Il est aussi possible de créer un dataframe sans importer un tableau, mais nous n'aborderons pas cette possibilité.
+
+Avec cette série d'exercices, vous allez apprendre les bases de la gestion de données dans R: 
+* importer un fichier
+* faire une sélection des colonnes qui vous intéressent
+* filtrer les lignes selon une ou plusieurs conditions
+* calculer une nouvelle colonne à l'aide des autres colonnes.
+
+Par défaut, R ne peut pas importer de fichier Excel (mais cela est possible en installant certaines librairies). Nous allons donc importer un fichier csv, qui est un fichier texte sous forme de tableau, séparé par des points virgules ou des virgules.
+
+L'ouverture d'un csv sous R se fait à l'aide de la fonction read.csv(). read.csv() doit être renseigné avec plusieurs arguments, qui ne sont pas tous obligatoires mais qui vous éviteront des erreurs d'importation. A noter que vous pouvez à partir d'Excel exporter votre feuille de calcul en csv (enregistrer-sous, format csv).
+
+*************************************
+# 1-Importer un CSV dans un dataframe
+*************************************
+
+Nous allons charger le fichier CSV des présidentielles de 2017 au sein d'une variable de type dataframe et que nous appelerons DF.2017. Pour cela téléchargez le fichier zip suivant :
+
+https://cours.univ-paris1.fr/pluginfile.php/714925/mod_folder/content/0/TD/presidentielles.zip?forcedownload=1.
+
+Dézippez le dans vos documents et notez bien le chemin où il se trouve. Remplacez le chemin de l'argument $file$ ci-dessous et remplacez les \ par des / , ce qui correspond à des chemins linux, mieux gérés par R que les chemins windows \.
+
+Comme déjà vu en préambule, les arguments doivent être placés par vos soins à l'intérieur de la parenthèse de la fonction. Ils ne peuvent pas être renommés (c'est le créateur de la fonction qui les a définis). Ils sont séparés par des virgules, certains étant obligatoires (le chemin du csv), d'autre optionnels (le type de séparateur).
+
+```{r exercice_3.1}
+DF.2017 <- read.csv(file = "renseigner ici le chemin complet du fichier csv", # attention, les chemins doivent être séparés par des / et non des \
+                           # par exemple : "C:/Users/Florian/presid2017.csv" et non C:\Users\Florian\presid2017.csv" 
+                   header = TRUE, # La première ligne contient-elle les libellés des colonnes : TRUE (vrai) ou FALSE (faux)
+                   sep = ";", # comment sont séparés les colonnes (en France, par des ;)
+                   dec = ",", # les décimales s'expriment en point ou en virgule
+                   encoding="Windows-1252" # permet de choisir l'encodage des données et évite des caractères étranges dans le dataframe.
+                   )
+```
+
+Après avoir renseigné le chemin du CSV, vous devriez voir dans la fenêtre de droite un nouvel élément Data DF.2017. Cliquez dessus pour voir son contenu. R va automatiquement assigner à chaque colonne un type (character, integer, double etc.). Il est important de vérifier que les codes INSEE des communes sont bien en caractères et non en chiffres, sinon les communes des départements entre 01 et 09 s'afficheront sans le 0 en début de code. C'est un problème courant sous Excel, moins sur R.
+
+A noter que vous pouvez déclarer manuellement chaque type de colonne dans read.csv, mais cela ne sera pas abordé dans cet exercice.
+
+En vous aidant de l'exercice 2.4 sur les variables et de l'exercice 1.9 sur les graphiques du préambule, affichez ci-dessous le type de la colonne CODGEO de DF.2017
+```{r exercice_3.2}
+
+```
+
+Chargez maintenant le csv des présidentiels de 2007 dans un nouveau dataframe. Tapez le code ci-dessous. Pensez à nommer votre nouvelle variable de manière compréhensible...
+```{r exercice_3.3}
+
+
+```
+
+************************************
+# 2- Manipulation sur les dataframes
+************************************
+
+En ouvrant le dataframe précédemment créé, vous pouvez vous apercevoir qu'il y a beaucoup de colonnes. Pour cet exercice, on souhaite travailler sur le taux d'abstention au premier et second tours des présidentielles 2007 et 2017.
+
+Certains résultats comme les votes pour les différents candidats ne nous intéresse pas. Nous allons donc faire des sélections sur les dataframes afin de ne conserver que les colonnes qui nous intéressent.
+
+*******************
+## 2.1-les packages
+*******************
+
+La manipulation des données comme la sélection de certaines colonnes peut se faire avec les fonctionnalités de base de R, mais il existe des outils développés par la communauté R qui permettent de travailler plus simplement et efficacement. On parle de packages. Attention toutefois, ce n'est pas parce qu'un package est disponible qu'il ne contient pas d'erreur...
+
+Pour la gestion des données, le package $dplyr$ est reconnu comme étant très puissant et simple. Nous allons l'installer en lançant la commande suivante :
+```{r exercice_3.4}
+
+install.packages("dplyr") # Il s'agit de la commande pour installer un package sous R. On met entre apostrophes le nom du package
+
+# Une fois installé, il faut charger la librairie : 
+
+library("dplyr")
+
+```
+
+******************************
+## 2.2 -Sélection des colonnes
+******************************
+
+dplyr ajoute beaucoup de fonctionnalités. Nous allons utiliser l'une d'elles, la fonction $select$ qui permet de choisir les colonnes d'un dataframe
+```{r exercice_3.5}
+
+# Remarquez qu'on assigne le résultat de la fonction select à un nouveau dataframe DF.abst2017, sinon le résultat serait simplement affiché ci-dessous sans être gardé en mémoire, et donc sans qu'on puisse le réutiliser.
+
+DF.abst2017 <- select(.data = DF.2017, # le dataframe à utiliser
+                     c(CODGEO,LIBGEO,CODDEP,LIBDEP,P2017T1_INSC,P2017T1_ABST,P2017T2_INSC,P2017T2_ABST )) # la liste des champs qui nous intéressent. Une liste avec R s'écrit à l'intérieur de la fonction c()
+
+# en fonction du créateur de la fonction, certains arguments s'écrivent sous forme de variable (comme ici :CODGEO et les autres colonnes de la liste), d'autre sous forme de texte, c'est à dire entouré d'apostrophe, ce qui donnerait "CODGEO"
+
+```
+Si vous cliquez sur DF.abst2017 dans Data (onglet Environnement en haut à droite), vous verrez qu'il n'y a plus que les 8 colonnes sélectionnées.
+
+N.B. dplyr permet également d'utiliser une fonctionnalité dite $pipe$ qui assigne plusieurs fonctions sur une même ligne à l'aide du signe %>%. VOus trouverez beaucoup d'exemples dplyr avec cette notation mais nous ne l'aborderons pas dans cet exercice.
+
+
+Faites maintenant la même chose que l'exercice 3.5, mais pour votre dataframe des éléctions 2007. Attention, le copier/coller est la principale source d'erreur en programmation ... Nommez votre dataframe DF.abst2007
+```{r exercice_3.6}
+
+
+```
+
+************************************
+## 2.3 -Jointure entre des dataframes
+************************************
+
+En statistique et base de données, il est souvent nécessaire de mettre en relation deux tableaux. On parle de $jointure$. 
+
+En faisant une jointure, on associe à une ligne d'un tableau 1 une ligne d'un tableau 2, sur la base d'un élément commun (un code présent dans les deux tables). Dans certains cas, on peut même associer une ou plusieurs lignes d'un tableau 1 à une ou plusieurs lignes d'un tableau 2. 
+
+Notre objectif est de mettre dans un nouveau dataframe les données 2007 et les données 2017. On sait que les dataframes DF.abst2017 et DF.abst2007 possèdent un champs (ou colonne) commun unique : les codes INSEE (CODGEO). Comme ce champs est partagé par les deux dataframes, nous allons faire la jointure sur ce champs afin de récupérer à la fois les données de DF.abst2017 et de DF.abst2007 sur un unique dataframe. 
+
+Pour cela, nous allons utiliser la fonction $inner_join$ de dplyr (seules les lignes communes entre les deux tables seront conservées. Il existe d'autres types de jointures qui pourront être abordées plus tard).
+
+Essayez de compléter la fonction inner join ci-dessous, après les arguments x, y et by
+```{r exercice_3.7}
+
+DF.abst0717 <- inner_join(x =  , # la table initiale
+                                 y = , # à laquelle on associe la seconde table
+                                 by =  "") # en liant sur le champs commun. Cet argument est entre apostrophes pour préciser qu'il ne s'agit pas d'une variable mais d’un champ.
+
+                           
+```
+
+Observez le résultat en ouvrant le dataframe DF.abst0717
+
+*******************************
+## 2.4 -Filtres sur les données
+*******************************
+
+Le dataframe DF.abst0717 contient les résultats pour l'ensemble de la France. Pour votre dossier, vous travaillerez sur une région ou des départements. Nous allons donc créer un nouveau dataframe, qui correspondra à DF.abst0717, mais uniquement sur quelques départements. 
+
+Pour cela, nous allons utiliser une autre fonction de dplyr : $filter$. Elle permet de faire une requête sur les lignes de vos données, avec pour résultat le résultat de cette requête. Par exemple, pour préciser que vous ne voulez que les lignes de Paris, il faut utiliser la fonction filter comme ci-dessous.
+
+```{r exercice_3.8}
+
+#Un filtre va être créé sur DF.abst0717 en ne demandant que les lignes qui sont vrais lorsque l'on demande le code departement égal à 75. 
+# Pour vérifier une égalité, on écrit un double égal ==. Une inégalité s'écrit !=. Si vous filtrez sur des données quantitatives, vous pouvez aussi utiliser <, =<, >= ou >.
+
+dplyr::filter(.data = DF.abst0717,
+               CODDEP.x == '75') # attention, lors de la jointure de l'exercice précédent, les champs en doublons, c'est à dire présent dans la table x et y avec le même nom ont été renommés. CODDEP n'existe plus, mais comme il était présent dans les deux tables, il a été renommé respectivement CODDEP.x et CODDEP.y. Les deux sont ici identiques.
+
+```
+
+Vous pouvez aussi combiner des conditions. Par exemple pour filtrer les communes du département 94 qui ont eu plus de 50000 inscrits en 2017 T1, on utilise l'opérateur $ET$, qui s'écrit dans R $&$. Seules les lignes qui remplissent les 2 conditions seront affichées (commune du 94 ET qui a plus de 50 000 inscrits sur les listes).
+
+```{r exercice_3.9}
+
+filter(.data = DF.abst0717,
+              CODDEP.x == '94' & P2017T1_INSC > 50000) 
+
+```
+
+Vous pouvez aussi utiliser l'opérateur $OU$, qui s'écrit $|$ (altgr+6). Les lignes qui remplissent une des deux conditions seront affichées.
+Observez le changement de résultat lorsque l'on passe de ET à OU :
+```{r exercice_3.10}
+
+filter(.data = DF.abst0717,
+              CODDEP.x == '94' | P2017T1_INSC > 50000) 
+
+```
+
+Appliquez un filtre sur DF.abst0717 sélectionnant au moins deux départements. Stockez le résultat dans un nouveau dataframe DF.final
+```{r exercice_3.11}
+
+
+```
+
+**********************************
+# 3 -Calcul d'une nouvelle colonne
+**********************************
+
+Pour finir, nous allons créer une nouvelle colonne dans notre dataframe. Cela se fait en assignant une valeur constante, une opération ou une fonction à notre dataframe et à sa nouvelle colonne.
+
+Par exemple, DF.2017$test <- 5 va ajouter une nouvelle colonne test dans le dataframe DF.2017 et remplir cette colonne de 5. Lancez le code ci-dessous et observez le résultat dans le dataframe. Les nouvelles colonnes sont ajoutées à la fin du dataframe.
+
+```{r exercice_3.12}
+DF.final$test <- 5 # Comme R ne trouve pas de colonne test dans le dataframe DF.abst0717, il en ajoute une. Si la colonne existe déjà, elle est écrasée... 
+```
+
+Vous pouvez aussi calculer une nouvelle colonne à partir d'une autre colonne :
+```{r exercice_3.13}
+DF.final$test2 <- DF.final$test / 10 
+```
+
+
+Pour finir ce chapitre, calculez 2 nouvelles colonnes : 
+* une première sur le taux d'abstention (et non pas le nombre) au 1er tour des présidentielles en 2007
+* une seconde sur le taux d'abstention au 1er tour des présidentielles en 2017
+
+```{r exercice_3.14}
+
+```
+
+
+La série d'exercices suivante vous permettra de visualiser vos dataframes sous forme de graphiques

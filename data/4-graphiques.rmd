@@ -1,0 +1,279 @@
+---
+title: "4 : R, les graphiques"
+author: "Florian Bayer"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+---
+
+*************************
+# Objectifs de l'exercice
+*************************
+
+R permet de manipuler des données mais aussi de les visualiser sous forme de graphiques et même de cartes.
+
+Dans cette série d'exercices, Vous allez apprendre à créer des graphiques dans R à l'aide du package ggplot2. Vous apprendrez ainsi à : 
+* créer des histogrammes
+* créer des graphiques en bâtons
+* créer des boxplots
+
+
+**********************
+# 1-Le package ggplot2
+**********************
+
+LE package le plus utilisé dans R pour faire des graphiques est $ggplot2$. Plus évolué que la fonction plot() de R, il reste néanmoins très facile à utiliser. ggplot2 contient plusieurs fonctions qui permettent chacune de créer un type de graphique.
+
+Le lien ci-dessous vous permet de mesurer l'éventail de possibilités qu'offre ggplot2 : 
+
+https://github.com/rstudio/cheatsheets/blob/master/data-visualization-2.1.pdf
+
+Pour cet exercice, nous utiliserons plusieurs jeux de données. En effet, vous ne disposez pas encore de suffisamment de données socio-démographiques pour produire les principaux
+
+***************************
+# 2-Installation de ggplot2
+***************************
+
+La première étape est d'installer et de charger ggplot2. Aidez-vous de l'exercice_3.4 du Markdown 3-dataframes pour installer ggplot2. Pour cet exercice, insérez vous-même un bloc de code R Markdown ci-dessous :
+
+******************************
+# 3- Création d'un histogramme
+******************************
+
+ggplot fonctionne selon le principe suivant (il existe des variantes, mais nous traiterons ici une version simple) : 
+* 1-déclaration d'un objet ggplot(), commun à tous les types de graphiques. On y précise le dataframe à utiliser puis la ou les colonnes
+* 2-déclaration du type de graphique que l'on souhaite faire : histogramme, barre, nuage de points
+* 3-ajout d'option sur le graphique. Par exemple le min et le max des axes
+
+Pour vous expliquer le fonctionnement de ggplot, nous allons créer un jeu de données fictifs que nous stockerons dans un dataframe df.
+```{r exercice_4.2}
+
+set.seed(2019) # permet de générer des chiffres Le chiffre entre parenthèse permet de produire les mêmes chiffres sur tous les ordinateurs. 
+
+
+df <- data.frame( # on crée un dataframe DF
+  sexe=factor(rep(c("F", "M"), each=200)), # avec une variable sexe de 200 lignes Femmes et 200 lignes Hommes 
+  poids=round(c(rnorm(200, mean=50, sd=5), # une variable poids, qui pour les F aura 200 valeurs, pour une moyenne de 50 et un écart-type de 5
+                 rnorm(200, mean=70, sd=5))) # même chose pour les H, mais avec une moyenne de 70
+  )
+
+head(df) # permet de visualiser les premières lignes du dataframe DF
+
+```
+
+Nous créons ensuite un histogramme avec ggplot. Pour rappel, un histogramme permet de représenter une variable quantitative en abscisse sous forme de classes, les ordonnées étant la fréquence des individus dans chaque classe.
+```{r exercice_4.3}
+
+ggplot(df, aes(x=poids)) + # 1 on crée l'objet ggplot. Le premier argument correspond au dataframe (ici df). 
+                           # aes pour aesthetic permet de préciser la ou les variables qui seront utilisés sur les axes,
+                           # mais aussi pour colorer les graphiques (non spécifié ici).
+                           # Le plus après la fonction ggplot() indique que nous allons ajouter d'autres objets
+  geom_histogram()         # ici, un objet histogramme...
+
+```
+Vous venez de créer un histogramme, qui compte le nombre de valeur dans votre dataframe df en fonction de la colonne poids.
+
+
+*******************************
+## 3.1 -Changement des couleurs
+*******************************
+
+En observant le résultat, on constate que la séparation des classes n'est pas très évidente. Nous allons changer le fond en noir (argument fill), avec des contours blancs (argument color).
+```{r exercice_4.4}
+
+ggplot(df, aes(x=poids)) +
+  geom_histogram(color="white", fill="black") # les barres de l'histogramme seront noires, avec un contours blanc.
+
+```
+Vous pouvez changer les couleurs en vous aidant par exemple de cette liste : 
+https://www.datanovia.com/en/wp-content/uploads/dn-tutorials/ggplot2/images/0100-r-color-names-plot-1.png
+
+Vous pouvez aussi appliquer une couleur en hexadécimal. Par exemple #4286f4 
+
+***************************************
+## 3.2 -Changement du nombre de classes
+***************************************
+
+Il est possible de changer l'amplitude des classes à l'aide de l'argument binwidth de la fonction geom_histogram() . Un bindwith de 100 fera un histogramme avec des amplitudes de classes de 100... Essayez de créer ci-dessous un histogramme avec une amplitude de 2, l'autre de 50. Observez les différences.
+```{r exercice_4.5}
+
+```
+
+
+*************************
+## 3.3 -Courbe de densité
+*************************
+
+Une autre manière de représenter vos données est de faire une représentation par densité de votre histogramme. Il n'y a plus de classes, mais une courbe continue qui résume la répartition de vos données :
+```{r exercice_4.6}
+
+ggplot(df, aes(x=poids)) + 
+ geom_density( fill="grey80") # Nous n'utilisons plus la fonction geom_histogram() mais geom_density
+
+```
+
+
+***************************
+## 3.4 -Ajout de la moyenne
+***************************
+
+Vous pouvez aussi ajouter la moyenne sur votre graphique. Pour cela on va ajouter une nouvelle fonction après geom_histogram(). On précise à ggplot qu'il va falloir ajouter une nouvelle fonction à l'aide du $+$ situé après geom_histogram(), puis on ajoute une ligne verticale à l'aide de geom_vline. On précise alors que la ligne va couper l'axe des x à la moyenne du champs poids (mean(poids)).
+```{r exercice_4.7}
+
+ggplot(df, aes(x=poids)) + 
+ geom_histogram(color="white", fill="black") + 
+ geom_vline(aes(xintercept=mean(poids)), # Cette partie configure l'emplacement de la ligne verticlae, c.a.d. sur la moyenne de poids
+            color="red", linetype="dashed", size=1) # Cette partie permet de configurer le style de la ligne
+
+```
+
+
+Essayez d'ajouter sur l'histogramme une ligne pour la moyenne ET une ligne pour la médiane (fonction median()). Cette dernière sera bleue.
+```{r exercice_4.8}
+
+
+
+```
+
+
+******************************
+## 3.5 -Comparer deux modalités
+******************************
+
+Lors de la création du dataframe fictif df, nous avons ajouté 2 modalités sur le sexe : F et H. Il est possible d'afficher leur répartition sur l'histogramme en précisant dans l'aes que vous souhaitez appliquer une couleur en fonction de la modalité sexe (color = sexe)
+```{r exercice_4.9}
+
+ggplot(df, aes(x=poids, fill=sexe)) + # On passe l'argument fill de geom_histogram dans l'aes de ggplot. On précise ainsi que l'on souhaite différencier la couleur de fond de l'histogramme en fonction du sexe f ou h.
+  geom_histogram(color = "white" ) # on garde néanmoins l'argument color qui correspond au contour de l'histogramme. Cet argument étant dans la fonction geom_histogram() et non dans ggplot(), elle ne changera pas en fonction du sexe.
+
+```
+
+
+Comme les barres se chevauchent, on ne parvient pas à voir certaines données de la modalité F. On peut utiliser l'argument alpha et position = "identity" pour mieux les visualiser.
+```{r exercice_4.10}
+
+ggplot(df, aes(x=poids, fill=sexe)) + 
+  geom_histogram(color = "white",alpha=0.5,position="identity" ) 
+```
+
+*******************
+## 3.6 -Mise en page
+*******************
+
+
+Nous allons maintenant ajouter un titre et des libellés pour les axes de notre histogramme. Pour cela, on ajoute 3 fonctions à la suite, en n'oubliant pas d'ajouter le signe + : 
+* ggtitle()
+* xlab()
+* ylab()
+
+Comme les titres sont des textes, pensez à les entourer de ""
+```{r exercice_4.11}
+
+ggplot(df, aes(x=poids)) +
+  geom_histogram(color="white", fill="black")+
+  ggtitle("Titre principal")+ # le titre principal. 
+  xlab("l'axe des abscisses")+ # le titre de l'axe des x
+  ylab("l'axe des ordonnées") # le titre de l'axe des y
+
+```
+
+
+On peut aussi spécifier le minimum et le maximum des x et y. Cela est très utile pour comparer deux graphiques de même nature.
+
+Pour cela on utilise xlim et ylim. Les deux attendent des listes. La première valeur étant le minimum, la seconde le maximum à représenter
+```{r exercice_4.11}
+
+ggplot(df, aes(x=poids)) +
+  geom_histogram(color="white", fill="black")+
+  ggtitle("Titre principal")+ 
+  xlab("l'axe des abscisses")+ 
+  ylab("l'axe des ordonnées")+
+  xlim(c(20,100))+ #l'axe des x va commencer à 20 et se finir à 100
+  ylim(c(0,50)) #l'axe des y va commencer à 0 et se finir à 50
+```
+
+*********************************
+## 3.7 -Histogramme sur vos données
+*********************************
+
+Vous allez maintenant appliquer vos nouvelles connaissances. A partir du dataframe DF.final du markdown 3-dataframes.rmd, créez :
+* un histogramme du taux d'abstention au 1er tour 2007.
+* un histogramme du taux d'abstention au 1er tour 2007 en fonction des départements que vous avez sélectionné.
+
+Si le dataframe DF.final n'est pas disponible dans les variables d'environnement, relancez les blocs de codes du document 3-dataframes.rmd. Appuyez sur ctrl+alt+r pour lancer tous les blocs de codes d'un document R Markdown.
+
+Pensez à mettre en page votre histogramme.
+
+```{r exercice_4.12}
+# histogramme du taux d'abstention au 1er tour 2007
+
+
+```
+
+```{r exercice_4.13}
+# histogramme du taux d'abstention au 1er tour 2007 en fonction des départements
+
+
+```
+
+*************************
+# 4- Graphiques en bâtons
+*************************
+
+Nous allons maintenant voire comment créer des graphiques en bâtons. Ils sont adaptés pour des variables discrètes et/ou qualitatives. Nous allons reprendre le jeu de données mtcars pour illustrer son utilisation.
+
+Lancez le bloc de code suivant, qui prépare les données pour l'exemple. Seules 3 voitures seront utilisées.
+```{r exercice_4.14}
+# histogramme du taux d'abstention au 1er tour 2007
+
+DF.mtcars <- mtcars # On charge mtcars dans un dataframe DF.mtcars
+DF.mtcars$type <- rownames(mtcars) # On créé une colonne type et on y ajoute le type de voiture
+DF.mtcars <- filter(DF.mtcars, type %in% c("Dodge Challenger","Ferrari Dino", "Pontiac Firebird")) # on filtre sur 3 voitures. %in% permet de filter sur les éléments de la liste, alors qu'un == ne peut le faire que sur une seule valeure.
+
+```
+
+Pour des graphiques en bâtons, on utilise la fonction $geom_bar()$ de ggplot. Le fonctionnement reste le même que pour geom_histogram : on définit d'abord les données dans la fonction ggplot, puis on ajoute le type de graphique et les éléments de mise en page. On précise toutefois dans ggplot() l'axe des x ET l'axe des y. 
+
+Les x correspondront à vos modalités, les y à la valeur que vous souhaitez représenter pour ces modalités.
+
+Il faudra également ajouter l'argument stat="identity" dans geom_bar. Il permet de préciser que la hauteur de vos barres correspondra à la colonne y renseignée dans l'aes. 
+
+```{r exercice_4.15}
+# histogramme du taux d'abstention au 1er tour 2007
+
+ggplot(DF.mtcars, aes(x=type, y=hp)) + # x correspond au type de voiture, y au chevaux
+  geom_bar(stat="identity")+ # on veut utiliser le y comme hauteur de barre
+  ggtitle("Trois voitures qui dépotent")+ 
+  ylab("Puissance (cv)")+
+  xlab(NULL) # on ne veut pas de libellé sur les x, on ajoute donc NULL dans xlab
+```
+
+Comme pour les histogrammes, vous pouvez facilement modifier les couleurs, les contours et même l'empilement des barres. 
+
+A titre d'information, l'ensemble des arguments disponibles pour geom_bar est disponible ici : 
+https://www.rdocumentation.org/packages/ggplot2/versions/1.0.1/topics/geom_bar
+
+
+*************************
+# 5- Les boxplots
+*************************
+
+Pour finir, vous allez créer des boxplots, ou boîtes à moustaches. C'est la fonction geom_boxplot() qui est ici utilisée. Vous disposez de tous les éléments nécessaires à leur création avec ggplot. Pour l'exercice final, créé à partir de DF.final :
+
+*un boxplot du taux d'abstention au 1er tour 2007.
+*un boxplot qui affiche à la fois le taux d'abstention au 1er tour 2007 et le taux d'abstention au 1er tours 2017
+
+Créez vos deux blocs de codes ci-dessous.
+
+
+
+
+
+Pour conclure, nous n'avons abordé qu'une infime partie de possibilités offertes par ggplot2. Nous pourrons voir au fil des séances d'autres fonctionnalités. Vous possédez néanmoins maintenant les bases pour créer seul des graphiques. Certains sites vous fourniront très souvent la solution à vos problèmes de création de graphiques.
+
+D'excellentes ressources sont d'ailleurs disponibles ici : http://www.sthda.com/french/wiki/ggplot2
+

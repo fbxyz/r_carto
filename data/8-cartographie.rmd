@@ -1,0 +1,564 @@
+---
+title: "8-cartographie.rmd"
+author: "Florian Bayer"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+---
+
+*************************
+# Objectifs de l'exercice
+*************************
+
+Il est possible de créer des cartes sous R et même d'appliquer des fonctionnalité de SIG (buffer, fusion, calcul de distances). Nous ne nous intéresserons qu'à la cartographie dans le cadre de ce cours.
+
+Il existe deux packages majeurs pour faire des cartes. : 
+* tmap https://cran.r-project.org/web/packages/tmap/vignettes/tmap-getstarted.html
+* cartography https://github.com/riatelab/cartography/ 
+
+Le premier est destiné aux utilisateurs avertis et permet de personnaliser les cartes dans les moindres détails. Il a l'avantage d'offrir un rendu "fixe" mais aussi "interactif" (vous pouvez naviguer sur la carte et récupérer des informations).
+
+Le second est développé par l'UMR RIATE et est plus accessible. Il vise à simplifier votre travail, tout en garantissant un rendu simple et efficaces. Il est néanmoins possible de personnaliser le rendu. C'est ce package que vous utiliserez pour vos dossiers.
+
+Cartography fonctionne un peu différemment de tmap. Ce dernier reprend les principes de ggplot (en ajoutant des fonctions les unes à la suite des autres avec un "+"). Avec cartography, on appelle la fonction plot() qui est la fonction de base de R pour les graphiques, puis on y ajoute des éléments à la suite, sans "+". Pour visualiser sa carte, il est donc nécessaire de lancer le bloc de code d'un coups et non ligne par ligne.
+
+**********************************************
+# 1-Installation et/ou chargement des packages
+**********************************************
+
+Nous utiliserons les packages "dplyr" que vous connaissez, "spdplyr" qui permet de faire fonctionner "dplyr" avec des objets géographiques et "cartography." Nous installerons aussi "raster", qui permet de chager (entre autre) des données géographiques dans R.
+```{r setup, include=FALSE}
+
+# On renseigne dans requiredPackages les packages R que l'on souhaite utiliser dans le document 
+# Il s'agit d'une liste au format : c(valeur_1,valeur_2,...,valeur_n) 
+
+requiredPackages = c('dplyr','spdplyr','cartography', 'raster', 'RColorBrewer')
+
+for(p in requiredPackages){
+  if(!require(p,character.only = TRUE)) install.packages(p)
+  library(p,character.only = TRUE)
+}
+
+rm(p,requiredPackages)
+```
+
+************************************
+# 2-Les données géographiques sous R
+************************************
+
+Les données géographiques sous R sont souvent du type SpatialPolygons, SpatialPoints, SpatialLines si elles n'ont qu'une géométrie, SpatialPolygonsDataframe, SpatialPointsDataframe et SpatialLinesDataframe si elles portent en plus des informations attributaires (comme sur un SIG).
+
+Il est normalement nécessaire de charger des données de SIG pouir les convertir sous l'un de ses formats. Comme nous travaillons sur l'ensemble des communes françaises, cette étape sera uniquement illustrée. Les couches géographiques des communes, départements et régions ont déjà été chargées dans un RData et nous verrons comment les ajouter sous la forme de variables.
+
+Néanmoins, le bloc de code ci-dessous vous illustre comment charger un fichier shapefile (format d'échange très fréquent en SIG) dans R
+```{r 8.1.Shapefile eval=FALSE}
+# Plusieurs packages existent pour charger des données géographiques. Je vous conseille d'utiliser raster, qui ne nécessite pas d'installer des outils supplémentaires sur votre ordinateur. Pour charger un shapefile avec raster, lancez simplement la fonction shapefile()
+
+VotreShapeFile <- raster::shapefile("chemin du shapefile, avec l'extension .shp")
+
+```
+
+Nous n'utiliserons cependant pas cette fonction pour votre dossier. Un fichier Rdata, disponible ici : https://www.dropbox.com/s/u9lxjifzk5zseip/L93_GEO_2018.zip?dl=0
+
+Enregistrez le lien sur votre ordinateur, notez le chemin et ajoutez le avant L93_GEO_2018.zip ci-dessous. Par exemple :
+"C:/Users/Florian/Downloads/L93_GEO_2018.zip"
+
+```{r 8.2.Load}
+# on utilise load directement dans le fichier zip pour charger le RData. Pensez à bien définir le chemin de L93_GEO_2018.zip
+load(unzip("L93_GEO_2018.zip", files="L93_GEO_2018.RData"))
+```
+
+Vous devriez voir 4 SpatialPolygonsDataframe :
+*L93_COM_2018 pour les communes
+*L93_DEP_2018 pour les départements
+*L93_REG_2018 pour les régions
+*L93_EUR_2018 pour les pays européens limitrophes
+
+Vous pouvez appeler la fonction plot() pour afficher les départements
+```{r 8.3.Plot1}
+plot(L93_DEP_2018)
+```
+
+Et même changer la symbologie
+```{r 8.3.Plot2}
+plot(L93_DEP_2018,
+     col="#F1EEE8", # La couleur de fond des départements
+     border="#8A5543", # La couleur de bordure des départements
+     lwd = 0.15) # l'épaisseur des traites
+```
+
+En ajoutant un autre plot() pour les régions et en spécificant add= TRUE, on peut ajouter sur la carte des départements le contours des régions
+```{r 8.3.Plot3}
+plot(L93_DEP_2018,
+     col="#F1EEE8", # La couleur de fond des départements
+     border="#8A5543", # La couleur de bordure des départements
+     lwd = 0.15) # l'épaisseur des traits
+
+plot(L93_REG_2018,
+     border="grey30",
+     lwd = 0.15,
+     add= TRUE)
+```
+Vous obtenez une carte, largement améliorable et sans mise en page. 
+
+
+************************************
+# 3-Cartography
+************************************
+
+Nous allons maintenant utiliser cartography sur les données communales, afin d'obtenir une carte choroplèthe du taux d'abstention et sa mise en page
+
+## 3.1 préparation des données
+Tout d'abord nous allons charger les données des présidentielles des communes, départements et régions. Pour cela, récupérer le fichier presid2002_2017.zip sur l'EPI. Enregistrez les sur votre ordinateur.
+```{r 8.5.DATA}
+
+# il n'est pas nécessaire d'attribuer le résultat de la fonction load() à un dataframe. Toutes les variables contenues dans le fichier RData seront automatiquement ajoutées.
+
+# De plus, vous n'êtes pas obligé de dezipper le fichier presid2002_2017.zip : 
+load(unzip("presid2002_2017.zip", files="presid2002_2017.RData"))
+
+# On en profite pour changer le type de colonnes dans le dataframe. Si la colonne est un facteur, elle est transformée en character. Ce n'est pas obligatoire maise pourra éviter des problèmes par la suite.
+presid2002 %>% mutate_if(is.factor, as.character) -> presid2002
+presid2007 %>% mutate_if(is.factor, as.character) -> presid2007
+presid2012 %>% mutate_if(is.factor, as.character) -> presid2012
+presid2017 %>% mutate_if(is.factor, as.character) -> presid2017
+
+
+```
+
+Une fois les fichiers nécessaires à votre dossier chargés, vous pouvez construire un dataframe qui contiendra les données de votre étude et le code des communes. Cette colonne servira en effet à joindre vos différents dataframe entre eux, afin d'en créer un nouveau. La jointure se fait à l'aide des fonctions dplyr::inner_join, dplyr::left_join ou merge.
+
+Il faudra également faire des sélections de colonnes avec dplyr::select() et de lignes avec dplyr::filter. Cette dernière fonction permettra de réduire votre dataframe à la zone d'étude (un ou plusieurs départements par exemple).
+
+L'exemple ci-dessous vous montre comment joindre les données géographiques communales aux données présidentielles 2017. Vous pouvez appliquer cet exemple à d'autres dataframes, géographiques ou non.
+
+```{r 8.5.Jointure}
+
+# Dans cet exemple, on fait un inner_join. C'est à dire que seules les lignes communes aux deux tables sont conservées. 
+# Vous pouvez aussi faire un left_join, qui conservera toutes les colonnes de la table de gauche. Si des lignes sont manquantes dans la table de droite, les valeurs apparaitront comme manquantes.
+
+VotreDataFrameGeographique <- dplyr::inner_join(x=L93_COM_2018, # la table à gauche de la jointure
+                                                y=presid2017,
+                                                by = c("INSEE_COM"="CODGEO"))
+```
+
+```{r 8.5.Select}
+
+# On décide de ne conserver que quelques colonnes : INSEE_COM, le libellé des communes, INSEE_DEP,, INSEE_REG, le nombre d'inscrits aux premiers et second tours de élections, ainsi que le nombre d'abstentions. Pour cela on utilise la fonction select() de dplyr
+
+VotreDataFrameGeographique <- dplyr::select(.data=VotreDataFrameGeographique,
+                                            INSEE_COM,LIBGEO,INSEE_DEP,INSEE_REG,P2017T1_INSC, P2017T1_ABST, P2017T2_INSC, P2017T2_ABST)
+
+                                             
+```
+
+```{r 8.5.Filtre}
+
+# Puis on ne sélectionne que les communes des Alpes-Maritimes (INSEE_DEP = '06') grâce à la fonction dplyr filter()
+VotreDataFrameGeographique <- dplyr::filter(.data=VotreDataFrameGeographique,
+                                            INSEE_DEP == '06')
+                                          
+```
+
+```{r 8.5.Calcul}
+
+# Enfin, on calcule le taux d'abstention au premier et second tours des présidentielles, puis son évolution. On utilise une nouvelle fonction dplyr, mutate()
+
+# On défini dans un premier temps le dataframe, puis on créé de nouvelle colonne en précisant le calcul à faire. Les colonnes à ajouter P2017T1_TX_ABST, P2017T2_TX_ABST et P2017_EVOL_ABST sont séparées par des virgules
+
+VotreDataFrameGeographique <- dplyr::mutate(.data=VotreDataFrameGeographique, 
+                                            P2017T1_TX_ABST = P2017T1_ABST / P2017T1_INSC * 100,
+                                            P2017T2_TX_ABST = P2017T2_ABST / P2017T2_INSC * 100,
+                                            P2017_EVOL_ABST = (P2017T2_TX_ABST - P2017T1_TX_ABST) / P2017T1_TX_ABST *100 )
+                                          
+```
+
+```{r 8.6.Data}
+
+# Remarquez que le dataframe créé est du type SpatialPolygonsDataframe. On peut accéder à sa table attributaire avec la commande suivante :
+
+VotreDataFrameGeographique@data
+                                          
+```
+
+## 3.2 Cartographie des données
+
+Les données étant prêtes, il ne reste plus qu'à les cartographier. L'idée est d'ajouter les éléments qui composent la carte les uns par dessus les autres : 
+1 d'abord on défini la zone à cartographier.
+2 On ajoute ensuite les pays limitrophes pour ne pas "isoler" la France et avoir l'océan.
+3 Puis le contours des départements autre que la zone d'étude.
+4 Les communes.
+5 Le constours du département de la zone d'étude.
+
+Le mode d'affichage est donc le même que sur un SIG ou Inkscape : la couche du dessous est masquée par celle du dessus.
+```{r 8.6.Cartographie_fonds}
+# Lancez le bloc de code ci-dessous dans son ensemble pour visualiser la carte. Pour le moment, aucune fonction de cartography n'est utilisée.
+
+# Les marges de la carte. N'y touchez pas
+opar <- par(mar = c(0,0,1.2,0))
+
+#On commence par ajouter l'emprise géographique de votre carte. On filtre directement dans plot à l'aide de filter() en ne choisissant que le département des Alpes-Maritimes
+# 1 Définition de l'emprise 
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP == "06"), # L'emprise géographique définitive de la carte (la première affichée)
+     col=NA, # La couleur de fond des Alpes-Maritimes. Aucune dans notre cas, elle sera cachée par les autres données
+     border=NA, # Idem
+     bg = "lightblue1") # la couleur de fond du graphique, c'est à dire l'océan pour une carte.
+
+#2 Ajout des pays européens limitrophes
+plot(L93_EUR_2018, #L'emprise géographique restera celle du plot précédent...
+     add=TRUE, # ...mais à condition de dire à R : ajoute cette carte à la précédente : add = TRUE
+     col="grey95", # La couleur de fond des départements
+     border= NA, # On ne rajoute pas de contours, car ils ne sont pas identiques à ceux des communes de l'INSEE
+     lwd = 0.15)
+
+#3 On ajoute ensuite le contours des autres départements. 
+plot(L93_DEP_2018, 
+     add=TRUE, 
+     col="#F1EEE8", # La couleur de fond des départements
+     border="#8A5543", # La couleur de bordure des départements
+     lwd = 0.15)
+
+#4 On y ajoute le contours des communes 
+plot(VotreDataFrameGeographique, # On ajoute le SpatialPolygonDataFrame
+     add=TRUE, # On l'ajoute toujours
+     col="#f5f5f3ff", # La couleur de fond des communes
+     border="#a9b3b4ff",  # La couleur de bordure des communes
+     lwd = 0.15 # l'épaisseur du trait des communes
+     )  
+
+#5 On rajoute uniquement le contours des Alpes-Maritimes, par dessus les communes
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP == "06"),
+     add=TRUE, 
+     col=NA, # Aucune couleur de fond pour les Alpes-Maritimes
+     border="#8A5543" # La couleur de bordure des Alpes-Maritimes
+     ) 
+
+```
+Vous obtenez une carte, largement améliorable et sans mise en page. 
+
+## 3.3 Carte choroplèthe
+Dans un premier temps, nous allons ajouter une nouvelle symbologie
+```{r 8.7.Cartographie_Choro}
+
+# On reprend le code précédent, mais on lui ajoute à la fin la fonction  layoutLayer(). Elle permet de mettre en page la carte. Pensez à mettre à jour VotreDataFrameGeographique ainsi que la zone d'étude
+
+# Les marges de la carte. N'y touchez pas
+opar <- par(mar = c(0,0,1.2,0))
+
+# L'emprise de votre zone d'étude et la couleur de l'océan
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% c("06")), # Mettez à jour les codes départements de votre zone d'étude. Par exemple c("75","77","91")
+     col=NA, 
+     border=NA, 
+     bg = "lightblue1") 
+
+# Ajout des pays européens limitrophes
+plot(L93_EUR_2018,
+     add=TRUE, 
+     col="grey95", 
+     border= NA,
+     lwd = 0.15)
+
+# Le contours des départements
+plot(L93_DEP_2018, 
+     add=TRUE, 
+     col="#F1EEE8", 
+     border="#8A5543",
+     lwd = 0.15)
+
+# Le contours des communes
+plot(VotreDataFrameGeographique, # Mettez à jour le dataframe
+     add=TRUE, 
+     col="#f5f5f3ff", 
+     border="#a9b3b4ff",  
+     lwd = 0.15 
+     )  
+
+# Le contours de votre zone d'étude
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% c("06")), # Mettez à jour les codes départements de votre zone d'étude. Par exemple c("75","77","91")
+     add=TRUE, 
+     col=NA, 
+     border="#8A5543"
+     ) 
+
+###########################
+# On rajoute ChoroLayer()
+###########################
+
+choroLayer(spdf = VotreDataFrameGeographique, #Le dataframe géographique
+          var = "P2017T1_TX_ABST", # La variable à cartographier
+          method = "quantile", # la méthode de discrétisation : "sd", "equal", "quantile", "fisher-jenks","q6"
+          nclass = 5, #le nombre de classes
+          col = brewer.pal(5, "YlOrBr"), #la palette de couleur. D'autres sont disponibles ici http://neocarto.hypotheses.org/files/2015/03/brewer.png 
+          border = "grey20", lwd = 1, # la couleur de bordure des polygones
+          legend.pos = "bottomright", # La position de la légende : "topleft","top","topright","right","bottomright","bottom","bottomleft","left"
+          legend.title.txt = "Votre titre de légende", #
+          legend.frame = FALSE, #Un contours sur la légende ? TRUE / FALSE
+          legend.border = "black", # la couleur du contours
+          legend.horiz = FALSE, #Légende horizontale ou verticale
+          add = TRUE)
+                                          
+```
+Vous pouvez tester différentes couleurs et options pour obtenir un rendu qui vous convienne.
+
+##3.4 Mise en page
+Enfin, on ajoute une autre fonction de cartography, layoutLayer(). Il permet d'ajouter les éléménts de mise en page.
+```{r 8.8.Cartographie_Mise_en_page}
+
+# Les marges de la carte. N'y touchez pas
+opar <- par(mar = c(0,0,1.2,0))
+
+# L'emprise de votre zone d'étude et la couleur de l'océan
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% c("06")), # Mettez à jour les codes départements de votre zone d'étude. Par exemple c("75","77","91")
+     col=NA, 
+     border=NA, 
+     bg = "lightblue1") 
+
+# Ajout des pays européens limitrophes
+plot(L93_EUR_2018,
+     add=TRUE, 
+     col="grey95", 
+     border= NA,
+     lwd = 0.15)
+
+
+# Le contours des départements
+plot(L93_DEP_2018, 
+     add=TRUE, 
+     col="#F1EEE8", 
+     border="#8A5543",
+     lwd = 0.15)
+
+# Le contours des communes
+plot(VotreDataFrameGeographique, # Mettez à jour le dataframe
+     add=TRUE, 
+     col="#f5f5f3ff", 
+     border="#a9b3b4ff",  
+     lwd = 0.15 
+     )  
+
+# Le contours de votre zone d'étude
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% c("06")), # Mettez à jour les codes départements de votre zone d'étude. Par exemple c("75","77","91")
+     add=TRUE, 
+     col=NA, 
+     border="#8A5543"
+     ) 
+
+###########################
+# On rajoute ChoroLayer()
+###########################
+
+choroLayer(spdf = VotreDataFrameGeographique, #Le dataframe géographique
+          var = "P2017T1_TX_ABST", # La variable à cartographier
+          method = "quantile", # la méthode de discrétisation : "sd", "equal", "quantile", "fisher-jenks","q6"
+          nclass = 5, #le nombre de classes
+          col = brewer.pal(5, "YlOrBr"), #la palette de couleur. D'autres sont disponibles ici http://neocarto.hypotheses.org/files/2015/03/brewer.png 
+          border = "grey20", lwd = 1, # la couleur de bordure des polygones
+          legend.pos = "left", # La position de la légende : "topleft","top","topright","right","bottomright","bottom","bottomleft","left"
+          legend.title.txt = "Votre titre de légende", #
+          legend.frame = FALSE, #Un contours sur la légende ? TRUE / FALSE
+          legend.border = "black", # la couleur du contours
+          legend.horiz = FALSE, #Légende horizontale ou verticale
+          add = TRUE)
+
+###########################
+# On rajoute layoutLayer()
+###########################
+
+layoutLayer(title = "L'abstention au 1er tours des présidentielles 2017 dans les Alpes-Maritimes", 
+            sources = "Sources: Ministère de l’Intérieur 2017, IGN 2019",
+            author = "Votre nom", 
+            frame = TRUE, # Un contours sur la carte, TRUE ou FALSE
+            north = FALSE, # On n'affiche pas le nord 
+            col = "#cdd2d4", # La couleur de fond derrière le titre
+            coltitle = "#8A5543",# La couleur de la police du texte
+            scale = 25 # La taille de l'échelle, en km
+            )                                          
+```
+
+
+## 3.5 Exercice : cartographie des résidus
+
+Vous allez appliquer vos connaissances pour créer la carte des résidus de votre modèle de régression. Si ce n'est pas fait, chargez le dataframe qui contient les résidus du modèle que vous souhaitez.
+
+Dans un premier temps, vous allez préparer le SpatialPolygonDataframe qui contiendra les communes et les résidus du modèle.
+Ensuite, vous utiliserez choroLayer() pour cartographier les résidus 
+
+### 3.5.1 les données
+
+Utilisez dplyr::inner_join pour joindre le SpatialPolygonDataframe des communes (L93_COM_2018) avec le dataframe qui contient vos résidus
+```{r 8.5.Jointure}
+
+# Renommez le résultat VotreDataFrameGeographique pour le rendre plus parlant.
+
+VotreDataFrameGeographique <- dplyr::inner_join(x=L93_COM_2018, # la table à gauche de la jointure
+                                                y=  , # ajoutez le dataframe qui contient vos résidus
+                                                by = c("INSEE_COM"= " ")) # Ajoutez entre " " la colonne de votre dataframe des résidus qui contient les codes des communes 
+
+# Comme vos résidus n'ont été faits que sur la zone géographique de votre étude et que nous utilisons un inner_join, vous n'avez pas besoin de filtrer le dataframe qui contient la jointure (VotreDataFrameGeographique) sur votre zone d'étude. En effet, inner_join ne garde que les lignes communes des tables.
+```
+
+
+Il ne reste plus qu'a préparer la carte. Les éléments à changer sont commentés. 
+```{r 8.8.Cartographie_Mise_en_page}
+
+# Les marges de la carte. N'y touchez pas
+opar <- par(mar = c(0,0,1.2,0))
+
+# L'emprise de votre zone d'étude et la couleur de l'océan
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% c("06")), # Mettez à jour les codes départements de votre zone d'étude. Par exemple c("75","77","91")
+     col=NA, 
+     border=NA, 
+     bg = "lightblue1") 
+
+# Ajout des pays européens limitrophes
+plot(L93_EUR_2018,
+     add=TRUE, 
+     col="grey95", 
+     border= NA,
+     lwd = 0.15)
+
+# Le contours des départements
+plot(L93_DEP_2018, 
+     add=TRUE, 
+     col="#F1EEE8", 
+     border="#8A5543",
+     lwd = 0.15)
+
+# Le contours des communes
+plot(VotreDataFrameGeographique, # Mettez à jour le dataframe. Il s'agit du dataframe que vous avez créé précédemment, avec les résidus
+     add=TRUE, 
+     col="#f5f5f3ff", 
+     border="#a9b3b4ff",  
+     lwd = 0.15 
+     )  
+
+# Le contours de votre zone d'étude
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% c("06")), # Mettez à jour les codes départements de votre zone d'étude. Par exemple c("75","77","91")
+     add=TRUE, 
+     col=NA, 
+     border="#8A5543"
+     ) 
+
+###########################
+# On rajoute ChoroLayer()
+###########################
+
+n_class <- 5 # mettez dans la variable n_class le nombre de classe souhaitez
+choroLayer(spdf = VotreDataFrameGeographique, #Le dataframe géographique
+          var = "P2017T1_TX_ABST", # La variable qui contient les résidus à cartographier
+          method = "sd", # lOn cartographie toujours lrés résidus en moyenne ecart-type
+          nclass = n_class, #le nombre de classes. On prend la valeur de n_class
+          col = brewer.pal(n_class, "PiYG"), #La palette de couleurs à utiliser. On utilise une double gamme inversée.
+          border = "grey20", lwd = 1, # la couleur de bordure des polygones
+          legend.pos = "left", # La position de la légende : "topleft","top","topright","right","bottomright","bottom","bottomleft","left"
+          legend.title.txt = "Votre titre de légende", #
+          legend.frame = FALSE, #Un contours sur la légende ? TRUE / FALSE
+          legend.border = "black", # la couleur du contours
+          legend.horiz = FALSE, #Légende horizontale ou verticale
+          add = TRUE)
+
+###########################
+# On rajoute layoutLayer()
+###########################
+
+layoutLayer(title = "Le titre de votre carte", 
+            sources = "Sources: Ministère de l’Intérieur 2017, IGN 2019",
+            author = "Votre nom", 
+            frame = TRUE, # Un contours sur la carte, TRUE ou FALSE
+            north = FALSE, # On n'affiche pas le nord 
+            col = "#cdd2d4", # La couleur de fond derrière le titre
+            coltitle = "#8A5543",# La couleur de la police du texte
+            scale = 25 # La taille de l'échelle, en km
+            )                                          
+```
+
+## 3.6 Cercles proportionnels
+
+Pour faire des cercles proportionnels, on utilise propSymbolsLayer()
+```{r 8.8.Cartographie_Mise_en_page}
+
+# Les marges de la carte. N'y touchez pas
+opar <- par(mar = c(0,0,1.2,0))
+
+# L'emprise de votre zone d'étude et la couleur de l'océan
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% c("06")), # Mettez à jour les codes départements de votre zone d'étude. Par exemple c("75","77","91")
+     col=NA, 
+     border=NA, 
+     bg = "lightblue1") 
+
+# Ajout des pays européens limitrophes
+plot(L93_EUR_2018,
+     add=TRUE, 
+     col="grey95", 
+     border= NA,
+     lwd = 0.15)
+
+
+# Le contours des départements
+plot(L93_DEP_2018, 
+     add=TRUE, 
+     col="#F1EEE8", 
+     border="#8A5543",
+     lwd = 0.15)
+
+# Le contours des communes
+plot(VotreDataFrameGeographique, # Mettez à jour le dataframe
+     add=TRUE, 
+     col="#f5f5f3ff", 
+     border="#a9b3b4ff",  
+     lwd = 0.15 
+     )  
+
+# Le contours de votre zone d'étude
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% c("06")), # Mettez à jour les codes départements de votre zone d'étude. Par exemple c("75","77","91")
+     add=TRUE, 
+     col=NA, 
+     border="#8A5543"
+     ) 
+
+###############################
+# On rajoute propSymbolsLayer()
+###############################
+
+propSymbolsLayer( spdf = VotreDataFrameGeographique, #Le dataframe géographique
+                  var = "P2017T1_INSC",
+                  inches = 0.4, # la taille du plus gros cercle sur la carte, en pouce...
+                  col = "brown4", # la couleur de fond des cercles
+                  legend.pos = "left",
+                  legend.title.txt = "Nombre d'inscrits",
+                  legend.frame = FALSE, 
+                  add = TRUE
+)
+
+###########################
+# On rajoute layoutLayer()
+###########################
+
+layoutLayer(title = "Le nombre d'inscrits sur les listes électorales des présidentielles 2017 dans les Alpes-Maritimes", 
+            sources = "Sources: Ministère de l’Intérieur 2017, IGN 2019",
+            author = "Votre nom", 
+            frame = TRUE, # Un contours sur la carte, TRUE ou FALSE
+            north = FALSE, # On n'affiche pas le nord 
+            col = "#cdd2d4", # La couleur de fond derrière le titre
+            coltitle = "#8A5543",# La couleur de la police du texte
+            scale = 25 # La taille de l'échelle, en km
+            )                                          
+```
+
+
+
+#4 -Guides pour Cartography
+
+Un résumé des fonctionnalités
+http://riatelab.github.io/cartography/vignettes/cheatsheet/cartography_cheatsheet.pdf
+
+Des exemples de créations de cartes
+https://cran.r-project.org/web/packages/cartography/vignettes/cartography.html
+
+La doucumentation des fonctionnalités :
+https://www.rdocumentation.org/packages/cartography/versions/2.2.0
+

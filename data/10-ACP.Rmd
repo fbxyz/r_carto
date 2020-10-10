@@ -1,0 +1,570 @@
+---
+title: "10-Analyse en Composante Principale"
+author: "Florian Bayer"
+date: "23 mars 2019"
+output: html_document
+---
+
+*************************
+# Objectifs de l'exercice
+*************************
+
+L'analyse en composante principale (ACP) permet de résumer et réorganiser l'ensemble de l'information contenue dans un tableau de données. De nouvelles variables hiérarchisées et indépendantes les unes des autres (coefficient de corrélation = 0) sont ainsi créées : les facteurs.
+
+L'objectif de ce TD n'est pas de rentrer dans les détails techniques de l'ACP, même si finalement son principe reste simple (résumer par des droites les principaux allongements d'un nuage de points). Nous verrons plutôt comment interpréter les facteurs d'une ACP, afin de mettre des mots sur ces résultats qui peuvent au premier abord paraitre obscures.
+
+Comme dans les TD précédents, nous verrons pas à pas la construction de l'ACP avec R, avant de vous présenter une fonction qui permet de résumer toutes ces étapes en une seule. Puis nous verrons comment cartographier un facteur.
+
+L'exemple du TD portera sur la part des CSP dans les communes alsaciennes en 2015.
+
+**********************************************
+# 1-Installation et/ou chargement des packages
+**********************************************
+
+Nous utiliserons les packages habituels, plus FactoMineR et factoextra. Le premier permet de réaliser des ACP assez facilement sur R, le second permet la représentation graphique des résultats de cet ACP.
+```{r setup, include=FALSE}
+
+requiredPackages = c('dplyr','spdplyr','cartography', 'RColorBrewer', 'ggplot2','corrplot',
+                     'FactoMineR', 'factoextra')
+
+for(p in requiredPackages){
+  if(!require(p,character.only = TRUE)) install.packages(p)
+  library(p,character.only = TRUE)
+}
+
+rm(requiredPackages,p)
+
+```
+
+**********************************************
+# 2-Chargement des données
+**********************************************
+
+Nous chargeons ensuite les données des CSP et géographiques.
+```{r 2.1.import}
+
+# Pensez à modifier les chemins vers les fichiers .zip si besoin
+load(unzip("presid2002_2017.zip", files="presid2002_2017.RData"))
+load(unzip("L93_GEO_2018.zip", files="L93_GEO_2018.RData"))
+
+# On n'utilise pas les dataframes des présidentielles. On applique alors la fonction rm() pour les retirer de l'espace de travail
+rm(presid2002,presid2007,presid2012,presid2017)
+```
+
+Comme déjà abordé dans les exercices précédents et le guide R, on fait les jointures entre le fond des communes et les autres dataframes.
+```{r 2.2.data}
+
+# Les communes et les CSP, ajoutés dans un spatial dataframe SPDF_exemple
+SPDF_exemple <- dplyr::inner_join(x=L93_COM_2018, 
+                                  y=CSP2015,
+                                  by = c("INSEE_COM"="INSEE_CODE"))
+
+
+# On ne garde que les données qui nous intéressent dans le SPDF_exemple
+SPDF_exemple <- dplyr::select(.data=SPDF_exemple,
+                              INSEE_COM,NOM_COM,INSEE_DEP,INSEE_REG,
+                              CSP_AGR_15,CSP_ARTI_15,CSP_OUV_15,CSP_EMP_15,CSP_CAD_15,CSP_PI_15,CSP_RET_15)
+
+# On filtre sur le département de l'Alsace
+SPDF_exemple <- dplyr::filter(.data=SPDF_exemple,
+                               INSEE_DEP %in% c('67','68') )
+
+
+# Finalement, on prépare un SPDF qui ne contiendra que les données de l'ACP, c'est à dire nos 7 variables de CSP. En effet, les fonctions que nous allons utiliser vont prendre en compte toutes les variables du dataframe. Si des variables que l'on ne souhaite pas ajouter au calcul sont présentes, elles seront quand même prises en compte ou retournerons une erreur (le nom des communes ne peut pas être ajouté à une ACP).
+
+SPDF_ACP_exemple <- dplyr::select(.data=SPDF_exemple,c("CSP_AGR_15","CSP_ARTI_15","CSP_OUV_15","CSP_EMP_15","CSP_CAD_15","CSP_PI_15","CSP_RET_15"))
+
+```
+
+Nous avons vu en cours qu'il est nécessaire de centrer-réduire les données d'une ACP (ACP normée). Cette opération permet afin de supprimer les unités des variables et de les exprimer toutes en écart à la moyenne (qui vaut maintenant zéro). On peut ainsi mélanger dans une ACP un taux de chômage (0 à 100%) et un PIB par habitants (0 à plusieurs dizaines de milliers), sans que le 'poids' des valeurs du PIB écrasent celles du taux de chômage. 
+
+Pour cela on soustrait chaque valeur d'une variable à sa moyenne et on divise le tout par son écart-type. On fait ensuite la même chose pour toutes les autres colonnes. Cette transformation est automatiquement réalisée par FactoMineR, mais si vous souhaitez le faire vous-même, vous pouvez utiliser la fonction de base R : scale().
+
+A noter que beaucoup d'outils de machine learning utilisent ce type de transformation afin d'éviter que des variables prennent le pas sur d'autres dans un modèle à cause de leurs unités.
+
+```{r 2.3.Scale}
+
+# Il s'agit seulement d'une illustration, la fonction scale() sera directement utilisée par FactoMineR. Ouvrez néanmoins le dataframe ExcempleScale pour le comparer au dataframe CSP2015
+
+ExempleScale <- as.data.frame(scale(SPDF_ACP_exemple@data))
+
+```
+
+
+*****************************
+# 3-Corrélation des variables
+*****************************
+
+Dans une ACP on évite d'ajouter des variables très corrélées deux à deux, surtout par soucis de simplification. L'ACP réorganise l'information, donc deux variables très corrélées auront souvent le même comportement dans les différents facteurs. Il est donc conseillé de faire une matrice de corrélation afin de conserver dans l'ACP les coefficients de corrélation de Bravais-Pearson inférieurs à un certain seuil (|R|< 0.95 par exemple, voir 0.90).
+
+On utilise donc de nouveau corrplot pour afficher la matrice des corrélations de Bravais-Pearson entre chaque variable :
+```{r 3.1.MatriceCorr}
+
+df <- SPDF_ACP_exemple@data # <- SPDF_exemple@data est le dataframe qui contient vos Données. C'est le seul élément à modifier ici
+
+############################ NE PAS MODIFIER !! ############################ 
+df <- df[, !sapply(df, is.character)] # On enlève les colonnes qui ne sont pas (!) des characters
+df <- df %>% na.omit() # Et on enlève les lignes avec des données manquantes
+df <- df[!is.infinite(rowSums(df)),] # ou qui ont des valeurs inf, souvent liées à une division par zéro
+
+M<-cor(df) # La matrice des corrélations
+corrplot(M, is.corr=TRUE,method = 'color', addCoef.col = "black",
+                          title = 'Matrice des corrélations de BP\n',mar=c(0,0,2,0),
+                          tl.col = "black", tl.srt = 90,cl.pos = "n",
+                          col = rev(brewer.pal(n = 5, name = "RdYlBu")),diag=FALSE,type="upper" )
+
+rm(M,df)
+################## Fin de l'interdiction de modification ################## 
+
+```
+On constate que nos variables sont assez peu corrélées, avec une intensité maximale de de -0.53 entre la part des ouvriers et des cadres dans les communes alsaciennes en 2015. On décide donc de faire l'ACP sur l'ensemble de ces variables.
+
+
+*******************
+# 4-Calcul de l'ACP
+*******************
+
+Dans la plupart des logiciels de statistiques, le calcul d'une ACP est souvent fastidieux. Dans R (à l'aide de certains packages), XLstat ou encore Philcarto, ce calcul est grandement simplifié. Nous utiliserons ici la fonction PCA() de FactoMineR (Principal Component Analysis)
+```{r 3.1.CalculACP}
+
+# On stock dans une variable acp_CSP les résultats de PCA()
+acp_CSP <- PCA(X = SPDF_ACP_exemple@data, # Le dataframe avec les données à utiliser pour l'ACP
+           scale = TRUE, # On précise que l'ACP sera normée
+           ncp = 7, # le nombre de facteurs en sortie de l'ACP. Il doit être est égal au nombre de variables à analyse. Ici 7 variables de CSP
+           graph = TRUE # l'ajout des graphiques. On précise TRUE pour l'exemple, mais nous ne l'utiliserons plus.
+           )
+
+```
+Sur nos ordinateurs modernes, le calcul d'une ACP est assez rapide. Ce n'était pas forcément le cas il y a encore quelques années. Deux graphiques apparaissent :
+
+Le premier qui s'affiche est le plan factoriel avec un cercle de corrélation. Il montre le positionnement des variables sur les facteurs (appelés Dim par FactoMineR) 1 et 2. On voit ainsi que la part des ouvriers sur le facteur 1 (abscisse) est très proche de -1, mais proche de 0 sur le facteur2. La part des agriculteurs n'est corrélée ni au facteur 1 ni au facteur 2. On voit aussi sur les libellés des axes que le facteur 1 contient 28,30% de l'information du tableau de départ, le facteur 2 19,76%. 
+
+Cette représentation est assez courante pour les ACP et on peut combiner tous les facteurs 2 à 2 (le facteur 1 avec le 3, le facteur 2 avec le 3, le 3 avec le 6 etc.). Nous n'utiliserons plus cette représentation dans la suite du TD pour des raisons pratiques, mais vous l'aurez ainsi abordé. La prise en compte de tous les facteurs en même temps (et non deux à deux) sera abordée lors du dernier cours sur la classification ascendante hiérarchique.
+
+Une autre sortie de la fonction PCA() est le nuage de points des individus en fonction des facteurs. Il se situe en haut à gauche du cercle des corrélations qui s'est affiché.  Chaque numéro sur le graphique correspond à la ligne des communes. On ne distingue pas de grandes spécificités, mais quelques points sortent du lot, comme le 749. La commune qui correspond à cette ligne est Blancherupt. Nous verrons plus tard la cartographie des individus en fonction des facteurs.
+
+********************************
+# 5- Interprétation des facteurs
+********************************
+
+Nous n'allons pas nous servir des cercles de corrélation pour interpréter les ACP, mais de 4 sorties principales :
+*La part de variance contenue sur chaque facteur (valeurs propres)
+*Les coordonnées des variables
+*Leur qualité de représentation
+*Leur contribution
+
+**************************
+## 5.1- Les valeurs propres
+**************************
+
+Chaque facteur résume une partie de l'information de départ de notre tableau sur les CSP. Ils sont également indépendants entre eux, c'est à dire que l'information résumée dans le facteur 1 est totalement différente (décorrélée) de celle du facteur 2. Il est en de même entre l'information du facteur 1 avec le 3 ou du 2 avec le 3. Ainsi, les coefficients de corrélations entre vos facteurs seront égaux à zéro.
+
+L'information unique portée par le facteur est appelée valeur propre. On peut donc mesurer la part de l'information d'un facteur (variance du facteur) par rapport à la totalité de l'information du tableau (variance totale du tableau). On utilise la fonction fviz_eig() pour afficher les parts valeurs propres 
+
+```{r 5.1.ValeursPropres}
+
+fviz_eig(X = acp_CSP, # La variable qui contient les résultats de l'ACP
+         addlabels = TRUE, # On ajoute les chiffres sur le graphique
+         choice = "variance", # Ne pas modifier, on représente la variance
+         ylim = c(0, 50)) # Pour avoir des graphiques visibles, on précise que l'axe des y va de 0 à 50%. A modifier si un des facteurs porte plus de 50% de la variance totale...
+
+```
+On constate bien que nos 7 facteurs (un par variable de départ) sont hiérarchisés. Le facteur 1 contient plus d'information que le 2, lui-même que le 3 etc. Les 3 premiers facteurs contiennent à eux seuls 63% de l'information totale du tableau de départ (28,3+19,8+15,4). Le facteur 7 contient une part minime d'information (1.4%). Cela ne veut pas dire que cette information est inintéressante. Il s'agit peut-être d’un phénomène particulier sur les CSP en Alsace.
+
+S'il y a une différence de 10 points de pourcentage entre le premier et le second facteur, la hiérarchisation de l'information n'est pas profondément marquée sur cette ACP. Elle l'aurait été si le facteur 1 contenait 40% de l'information, le 20% et les autres facteurs moins de 10% chacun. Il n'y a cependant pas de règles statistiques concernant le nombre de facteurs à retenir. On peut s'arrêter après un grand "saut" de variance, ou encore ne retenir que les facteurs que l'on sait interpréter (et donc à postériori).
+
+L'analyse de la part des valeurs propres permet de mesurer la nouvelle hiérarchisation de l'information entre les facteurs, et dans certains cas de n'en choisir que quelques-uns à analyser. Ici, à part le 7, difficile de se concentrer uniquement sur les 3 premiers facteurs. Le 4 porte quasiment autant d'information que le 3, de même que le 5 et 6 dans une moindre mesure. 
+
+En revanche, l'analyse de cette part des valeurs propres ne permet pas de comprendre à quoi correspondent ces facteurs. Pour cela, il faut regarder les coordonnées, les contributions et la qualité de représentation des variables sur les facteurs.
+
+*************************************
+## 5.2- Les coordonnées des variables
+*************************************
+
+Les coordonnées des variables permettent d'interpréter les facteurs car ses dernières se positionnent différemment sur chaque facteur. 
+
+Pour rappel, chaque axe factoriel correspond à une droite qui résume un allongement maximal du nuage de points. De plus, chaque axe est indépendant (perpendiculaire) aux autres (il y a autant de dimensions que de variables). On projette sur chacune de ces droites les variables : certaines sont très proches du centre de gravités du nuage de point (là où toutes les droites de croisent perpendiculairement) et on donc des coordonnées proches de 0. D'autres sont très éloignées positivement ou négativement de ce centre de gravité. Comme on standardise le min et le max de la droite entre -1 et 1 et qu'on applique un modèle linéaire, les coordonnées sont s'interprétées comme des coefficients de Bravais-Pearson.
+
+Plus les coordonnées sont proches de -1 ou 1, plus l'axe factoriel étudié est "expliqué"" par cette variable. Evidemment, comme i y a plusieurs variables, il peut exister des combinaisons : sur le facteur 1, des variables A B et C peuvent avoir des coordonnées respectives de 0.9,0.8 et 0.7. Sur le facteur 2, elles peuvent avoir des coordonnées de -0.8, 0.1 et 0.9. Dans le premier cas, A B et C varieront toujours dans le même sens. Dans le second cas, A et C auront toujours un comportement inverse alors que B, avec une coordonnée faible à 0.1, ne participe pas à l'explication du facteur.
+
+Pour simplifier l'interprétation des facteurs et de leurs coordonnées, on réalise une matrice de corrélation en appliquant une palette de couleur. 
+```{r 5.2.CoordoneesVariables}
+
+# On stocke toutes les informations sur les variables présentes dans acp_CSP (créée en 4.1) dans une variable « variables »...
+variables <- get_pca_var(acp_CSP)
+
+# Puis on représente les coordonnées des variables sur les facteurs
+corrplot(variables$coord, is.corr=TRUE,method = 'color', addCoef.col = "black",
+         title = 'Coordonnées des variables\n',
+         mar=c(0,0,2,0),
+         tl.col = "black",
+         tl.srt = 90,
+         cl.pos = "n",
+         col = rev(brewer.pal(n = 8, name = "PiYG")))
+
+```
+On interprète ensuite chaque facteur en fonction des coordonnées les plus importantes 
+
+*Facteur 1 (Dim.1): Le facteur oppose la part d'ouvriers (-0,85) aux cadres (+0,69), même si l'intensité de la première variable est plus importante. Dans une moindre mesure, la part des employés varie dans le même sens que celle des ouvriers, mais avec une intensité plus faible (-0,56). Il est en de même pour les professions intermédiaires avec les cadres (+0.48). L'analyse des contributions et/ou des représentations permettra de dire s'il faut conserver ou non ces deux variables avec de plus faibles intensités.
+
+*Facteur 2 : ce facteur oppose la part des retraités (-0,82) aux professions intermédiaires (+0,64), mais de nouveaux avec des intensités qui ne sont pas équivalentes. La part des employés dans le même sens que les professions intermédiaires pourrait se discuter (+0,42).
+
+*Facteur 3 : ce facteur représente l'information du tableau de départ sur la part des agriculteurs (+0.8). Il s'agit don des communes rurales de la zone d'étude. La part des artisans semble aller dans le même sens (+0.48), mais avec une intensité beaucoup plus faible
+
+*Facteur 4 : ce facteur oppose la part des artisans (+0,77) à la part des agriculteurs (-0,52).
+
+*Facteur 5 : les parts des employés et des cadres varient dans le même sens (+0,48 et +0,41) et s'opposent à la part des professions intermédiaires (-0,52).
+
+*Facteur 6 : La part des cadres et des ouvriers varient dans le même sens (-0,5 et -0,35) et s'opposent à la part des employés (+0.39). On pourrait se demander si ce facteur ne correspond pas aux communes en court de gentrification.
+
+*Facteur 7 : la faible part de valeur propre du facteur (1,4%) et les faibles coordonnées rendent l'interprétation peu pertinente.
+
+***************************************
+## 5.3- Les contributions des variables
+***************************************
+
+Les contributions vont aussi vous aider à mieux comprendre chaque facteur. Il s'agit de déterminer les variables qui participent le plus à la formation des facteurs. Les contributions s'expriment en pourcentage.
+
+De nouveaux, on utilise corrplot(), mais en précisant que les données ne sont pas des coefficients de corrélation
+```{r 5.3.ContributionsVariables}
+
+
+corrplot( variables$contrib, 
+          is.corr=FALSE, # On précise ici que les données à représenter ne sont pas des coef. de corrélation.
+          method = 'color',
+          addCoef.col = "black",
+          title = 'contributions des variables\n',
+          mar=c(0,0,2,0),
+          tl.col = "black",
+          tl.srt = 90,
+          cl.pos = "n",
+          col = (brewer.pal(n = 5, name = "Reds")))
+
+```
+Comme précisé en cours et ci-dessus, les contributions correspondent à la part d'information (inertie) de chaque variable dans la formation du facteur. Le total sur un facteur est donc égal à 100%. De nouveau, on s'intéresse aux valeurs les plus élevés. Certains statisticiens considèrent qu'il faut considérer uniquement les contributions qui dépassent la contribution moyenne de l'axe. Soit 100% / nombre de variables. Dans notre cas, 100/7, soit 14,28%. Il faut évidemment se référer aussi aux coordonnées, qui sont les seules sorties à vous donner les signes des associations.
+
+En prenant un critère à 14 ou 15 %, on retient donc comme variable ayant une importante contribution sur nos facteurs :
+
+*Facteur 1 : la part des ouvriers (36,58%), des cadres (23,85%) et des employés (15,62%). Lors de l'analyse des coordonnées, la question se posait de savoir si on conservait ou non les employés et les professions intermédiaires dans l'interprétation du facteur. Avec le seuil de la moyenne (14,28%), on conserve donc les employés, mais pas les professions intermédiaires (11,72%).
+
+*Facteur 2 : les variables qui ont les plus fortes contributions sont la part des retraités (49,18%) et des professions intermédiaires (29,43%). Avec le seuil de la moyenne, on décide de ne pas conserver la part des employés (12,64%) lors de l'interprétation du facteur 2.
+
+*Facteur 3 : on conserve pour l'interprétation la part des agriculteurs (58,96%, presque 2/3 de l'information du facteur) et des artisans (21,78%). 
+
+*Facteur 4 : même chose, mais avec une part plus importante pour les artisans que les agriculteurs (28,08%). Attention, dans le facteur 3, agriculteurs et artisans variaient dans le même sens (cf. coordonnées). Ils s'opposent sur le facteur 4.
+
+*Facteur 5 :  On s'appuiera sur les variables part des professions intermédiaires, employés et cadres pour interpréter le facteur (33,64%, 28,88% et 20,63%)
+
+*Facteur 6 : Enfin, on gardera pour l'interprétation du facteur 6l a part des cadres (36,03%), des employés (21,13%) et des ouvriers (17,08%).
+
+**************************************************************
+## 5.4- La qualité de représentation des variables ou cosinus²
+**************************************************************
+
+Enfin, on peut aussi juger de la qualité de représentation de nos variables sur les facteurs. En effet, nous avons vu que les coordonnées s'interprétaient comme des coefficients de corrélations. Les cosinus², ou qualité de représentation, peuvent donc être considérer comme le r² d'un modèle linéaire, lui-même étant le coefficient de corrélation linéaire élevés au carré.
+
+A votre niveau, il n'est pas nécessaire de s'y intéresser. Notez cependant que les cosinus² servent à la construction des axes.
+
+Même si vous ne l'utiliserez pas, voici quelques lignes de codes pour représenter les cosinus² de votre ACP
+```{r 5.4.ContributionsVariables}
+
+corrplot(variables$cos2,
+         is.corr=FALSE,
+         method = 'color',
+         addCoef.col = "black",
+         title = 'Cosinus² des variables\n',
+         mar=c(0,0,2,0),
+         tl.col = "black",
+         tl.srt = 90,
+         cl.pos = "n",
+         col = (brewer.pal(n = 5, name = "Purples")))
+
+```
+
+
+*********************
+## 5.5- les individus
+*********************
+A l'aide des coordonnées et des contributions des variables, nous avons pu interpréter l'information hiérarchisée dans les facteurs. Pour rappel, les individus possèdent aussi des coordonnées sur chaque facteur. Une différence majeure est que les coordonnées des individus ne s'interprètent pas comme des coefficients de corrélation, car ils peuvent dépasser +1 et -1 dans une ACP.
+
+Ces coordonnées des individus sont en lien avec les coordonnées des variables et s'interprètent dans le même sens que les coordonnées des variables. Ainsi, un individu avec des coordonnées positives élevées sur le facteur 1 s'interprètera dans le même sens que les coordonnées des variables positives sur le facteur 1. 
+
+A l'inverse, un individu avec des coordonnées négatives élevées sur le facteur 1 s'interprètera dans le même sens que les coordonnées négatives sur le facteur 1, et inversement aux coordonnées positives.
+
+Autrement dit sur les facteurs, nous auront des individus avec des valeurs éloignées de 1, de -1 et d'autres proches de 0. Ces dernières ne seront pas "influencées" par l'interprétation du facteur. Imaginons 3 communes A, B et C :
+
+*A possède une coordonnée (des individus donc) de -10.5 sur le facteur 1, l'un des maximums de la série. Le facteur 1 oppose la part des ouvriers et dans une moindre mesure des employés à celle des cadres. La commune A a donc une forte représentation des ouvriers (et un peu des employés) et une sous-représentation des cadres.
+*B possède une coordonnée de 0.1 sur le facteur 1. Elle ne possède donc pas de forte représentation d'une des deux oppositions.
+*C possède une coordonnées de -12 sur le facteur 1, l'un des minimums de la série. Dans ce cas, C est une commune avec une forte représentation de la part des cadres et une sous-représentation des ouvriers et des employés.
+
+Sur le facteur 2, les coordonnées des 3 communes seront différentes car ce facteur ne résume pas la même chose.
+
+On peut donc cartographier les coordonnées des individus pour visualiser le "résumé" de chaque facteur.
+
+A noter que les individus possèdent aussi des contributions. Il est nécessaire de vérifier que le facteur n'est pas composé à plus de 20% par exemple par une seule commune (le facteur étant alors largement influencé par cette commune).
+
+**********************************
+## 5.6- Résumé des interprétations
+**********************************
+
+On peut finalement résumer les interprétations avant de passer à la cartographie des facteurs : 
+
+*Facteur 1 : opposition entre la part des ouvriers et dans une moindre mesure la part des employés (coordonnées négatives) VS la part des cadres (coordonnées positives). Il s'agit des principales différenciations entre les communes alsaciennes sur le jeu de données utilisé (28,3% de la variance totale).
+
+*Facteur 2 : opposition entre part des retraités (coordonnées négatives) et les professions intermédiaires (coordonnées positives). Près d'un cinquième (19,8%) de la variance totale du jeu de données est inclus dans ce facteur.
+
+*Facteur 3 : forte représentation de la part des agriculteurs sur les coordonnées positives, associée dans une moindre mesure à la part des artisans. Les individus avec des coordonnées négatives sur ce facteur auront donc une sous-représentation des agriculteurs. 15,4% de la variance totale est contenue dans ce facteur. 
+
+*Facteur 4 : ce facteur oppose la part des artisans (coordonnées positives) à la part des agriculteurs (coordonnées négatives). Il contient 13,7% de la variance totale du tableau de départ.
+
+*Facteur 5 : opposition entre la part des employés et des cadres (coordonnées positives) VS la part des professions intermédiaires (coordonnées négatives). 11,4% de la variance totale est comprise dans ce facteur.
+
+*Facteur 6 : la part des cadres et des ouvriers (coordonnées négatives) s'opposent à la part des employés (coordonnées positives). On pourrait se demander si ce facteur ne correspond pas aux communes en cour de gentrification, même si ce phénomène est plus adapté à l'échelle du quartier. Ce facteur contient 10% de la variance totale du tableau de départ.
+
+*Facteur 7 : la part de variance par rapport au total est trop faible pour être analysé (1,4%).
+
+Il est toujours intéressant d'interpréter les principaux facteurs. L'ACP permettant de réorganiser et hiérarchiser l'information du tableau de départ, certains phénomènes non visibles sur les données brutes peuvent ressortir sur certains facteurs. Mais comme toujours, ce n'est pas les outils statistiques qui vous donneront l'interprétation... Ces outils ne sont que des aides, c'est à vous qu'il revient de les comprendre (lorsque cela est possible).
+
+**************
+# 6 ACP facile
+**************
+
+Afin de faciliter la conception d'une ACP, une fonction regroupant toutes les étapes précédentes a été construite. Comme d'habitude, vous n'avez pas à la modifier. Il est simplement nécessaire de la charger puis de l'appeler.
+
+Cette fonction permet :
+  *de calculer une ACP
+  *de visualiser les valeurs propres
+  *de visualiser les coordonnées des variables
+  *leurs contributions
+  *leurs cosinus²
+  *de créer un spatial dataframe avec les individus, leurs coordonnées et leurs contributions
+
+
+```{r 6.1.ACPfacile}
+
+############################ NE PAS MODIFIER !! ############################ 
+ACP_Facile <- function(spdf,var,code,sortie) {
+  
+  # Le dataframe qui ne contient que les variables nécessaires à l'ACP
+  df <-dplyr::select(.data=spdf,var)
+  # l'ACP                          
+  acp <- PCA(df, graph = FALSE, scale = TRUE, ncp = 15 )
+  
+  # Graphique des valeurs propres
+  g1_VP <- fviz_eig(acp, addlabels = TRUE, ylim = c(0, 50))
+
+  # Les infos sur les variables
+  variables <- get_pca_var(acp)
+
+  # Les coordonnées des variables sur les facteurs
+  g2_VarCoord <- corrplot(variables$coord, is.corr=TRUE,method = 'color', addCoef.col = "black",
+                          title = 'Coordonnées des variables\n',mar=c(0,0,2,0),
+                          tl.col = "black", tl.srt = 90,cl.pos = "n",
+                          col = rev(brewer.pal(n = 8, name = "PiYG")))
+
+  # Les contributions des variables sur les facteurs
+  g3_VarContrib <- corrplot(variables$contrib, is.corr=FALSE,method = 'color', addCoef.col = "black",
+                          title = 'contributions des variables\n',mar=c(0,0,2,0),
+                          tl.col = "black", tl.srt = 90,cl.pos = "n",
+                          col = (brewer.pal(n = 5, name = "Reds")))
+
+  # Qualité de représentation des variables sur les facteurs
+  g4_cos2 <- corrplot(variables$cos2, is.corr=FALSE,method = 'color', addCoef.col = "black",
+                        title = 'Cosinus² des variables\n',mar=c(0,0,2,0),
+                        tl.col = "black", tl.srt = 90,cl.pos = "n",
+                        col = (brewer.pal(n = 5, name = "Purples")))
+
+  # Les individus
+  ind <- get_pca_ind(acp)
+  SPDF_ACP_RES <-  merge(x=spdf,y=as.data.frame(ind$coord),by="row.names")
+  #SPDF_ACP_RES <-  merge(x=SPDF_ACP_RES,y=as.data.frame(ind$contrib),by="row.names")
+  
+  sortie <- as.character(sortie)
+  assign(sortie, SPDF_ACP_RES, envir=.GlobalEnv)
+  
+  return (list(g1_VP,g2_VarCoord,g3_VarContrib,g4_cos2))
+
+  }
+
+################## Fin de l'interdiction de modification ################## 
+
+```
+
+Il suffit d'appeler la fonction pour afficher les résultats. Ne changez pas encore les arguments, contentez-vous de lancer le bloc de code pour visualiser les résultats. On recrée ici l'ACP précédente sur les CSP.
+
+```{r 6.2appel.ACPFacile}
+
+ACP_Facile(spdf= SPDF_exemple, # le spatial dataframe avec vos données
+           var = c("CSP_AGR_15","CSP_ARTI_15","CSP_OUV_15","CSP_EMP_15","CSP_CAD_15","CSP_PI_15","CSP_RET_15"), # La liste des variables de votre ACP
+           code = "INSEE_COM", # Le code géographiques de spdf
+           sortie = "SPDF_ACP_ALSACE_CSP" # le nom du spdf en sortie avec les données de l'ACP
+           )
+```
+Vous retrouvez les différents graphiques abordés dans le point 5. Une fenêtre R Console s'affiche avec les coordonnées, les contributions et les cosinus² des variables. Elle ne devrait pas vous être utile, mais si besoin vous pouvez faire un copier-coller pour travailler sur Excel.
+
+Enfin, un SPDF a été créé, SPDF_ACP_ALSACE_CSP. Il contient les variables de départ et les coordonnées des individus. Attention, au 28/03/2019, les contributions des individus ne sont pas encore ajoutées. Elles le seront prochainement.
+
+******************************
+# 7- Cartographie des facteurs
+******************************
+
+Il ne reste plus qu'à cartographier les facteurs les plus pertinents de l'ACP. La cartographie d'un axe factoriel suit des règles précises, qu'il est parfois difficile d'appliquer avec R. La mise en page de la carte d'un facteur est souvent plus efficace avec un logiciel de dessins assisté par ordinateur comme Inkscape ou Illustrator. Néanmoins, nous essaierons de produire nos cartes avec R.
+
+Le principe reste le même que pour les autres cartes : 
+*Les coordonnées des individus sont des données quantitatives de taux. On utilise donc la variable visuelle valeur afin de produire une carte choroplèthes.
+*Comme il y a des coordonnées positives et négatives, on utilise une double gamme inversée, ici avec une opposition ton chaud vs ton froid
+*Les résultats étant centré-réduit et suivant le plus souvent une loi normale, on applique une discrétisation en moyenne écart-type. La classe centrale (entre -0.5 et +0.5 écart-type autours de la moyenne) aura une teinte neutre (blanc cassé, jaune pâle).
+
+On ajoute aussi des informations complémentaires :
+*Il faut aider le lecteur dans la compréhension du facteur. Lui donner seulement les coordonnées des individus ne servira à rien. Il faut donc ajouter dans la légende une interprétation des résultats
+*On la complète le plus souvent par des flèches indiquant l'intensité. Cela ne sera pas fait dans R
+*On ajoute toujours la part de variance expliquée par le facteur par rapport à la variance totale
+* On ajoute toujours une petite phrase discrète, précisant : Résultats d'une ACP normée, menée sur un tableau de données qui décrit n individus géographiques (remplacer n par le nombre), en fonction de critères xxxx (par exemple socio-démographiques et économiques) en date du dddd (ajouter au moins l'année ou un intervalle de référence des données).
+
+
+
+La fonction ACP_Facile() a déjà créé un SPDF avec les coordonnées des individus. Il n'y a donc aucune jointure à faire.
+```{r 7.1.Carto.ACP}
+
+#Quelques éléments sont à modifier et sont précisés par le commentaire # <-- . Ne les modifiez pas pour le moment, afin que l'exemple puisse fonctionner.
+
+spdf <- SPDF_ACP_ALSACE_CSP # <-- on donne un nom générique au SPDF à cartographier. Il faudra donc mettre le nom du SPDF de sortie de la fonction ACP_Facile(). 
+
+facteur <- "Dim.1" # <-- mettez à jour le n° du facteur à cartographier. Dim.1 pour le facteur 1, Dim.3 pour le facteur 3 etc.
+
+ZoneEtude <- c("67","68") # <--  Mettez à jour les codes départements de votre zone d'étude. Ils doivent correspondre à la zone également étudiée avec votre ACP...
+
+############################ NE PAS MODIFIER !! ############################ 
+# La méthode de discrétisation. Ne pas modifier
+## On discrétise en moyenne écart type pour les résidus. On fait en sorte que la moyenne soit centre de classe.
+## On stocke dans des variables les paramètres univariées pour simplifier la lecture du code
+
+var <- eval(parse(text=paste("spdf@data$",facteur,sep="")))
+var_moy <- mean(var)
+var_sd <- sd(var)
+var_moy_p05 <- var_moy + var_sd*0.5
+var_moy_m05 <- var_moy -var_sd*0.5
+var_moy_p15 <- var_moy + var_sd*1.5
+var_moy_m15 <- var_moy -var_sd*1.5
+var_min <-min (var)
+var_max <- max(var)
+# On stocke les bornes de classes dans breaks Ne pas modifier
+breaks <- c(var_min,var_moy_m15,var_moy_m05,var_moy_p05,var_moy_p15,var_max)
+# On enlève les variables précédentes qui ne servent plus. Ne pas modifier
+rm(var_moy,var_sd,var_moy_p05,var_moy_m05,var_moy_p15,var_moy_m15,var_min,var_max)
+# La palette des couleurs. Ne pas modifier
+palette <- carto.pal(pal1="green.pal", n1 = 2, pal2 = "pink.pal", n2 = 2, middle = TRUE,transparency = FALSE)
+################# Fin de l'interdiction de modification ################# 
+
+
+#####################################
+# Les contours et limites de la carte
+#####################################
+
+# Les marges de la carte. N'y touchez pas
+opar <- par(mar = c(0,0,1.2,0))
+
+# L'emprise de votre zone d'étude et la couleur de l'océan
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% ZoneEtude), 
+     col=NA, 
+     border=NA, 
+     bg = "lightblue1") 
+
+# Ajout des pays européens limitrophes 
+plot(L93_EUR_2018,
+     add=TRUE, 
+     col="grey95", 
+     border= NA,
+     lwd = 0.15)
+
+# Le contours des départements
+plot(L93_DEP_2018, 
+     add=TRUE, 
+     col="#F1EEE8", 
+     border="#8A5543",
+     lwd = 0.15)
+
+# Le contours des communes
+plot(spdf, # <- Mettez à jour le dataframe, celui qui contient le fond de carte et les Données
+     col="#f5f5f3ff", 
+     border="#a9b3b4ff",  
+     lwd = 0.15,
+     add=TRUE
+     )  
+
+
+#########################
+# On rajoute ChoroLayer()
+#########################
+
+choroLayer(spdf = spdf, 
+          var = facteur, 
+          breaks= breaks,
+          col = palette,
+          border = "grey70",
+          lwd = 0.5, 
+          legend.pos = "n",
+          legend.title.txt = "",  # on n'ajoute pas de légende avec chorolayer pour le moment
+          legend.frame = FALSE, 
+          legend.border = "black", 
+          legend.horiz = FALSE,
+          add = TRUE
+          )
+
+# Le contours de votre zone d'étude
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% ZoneEtude), 
+     add=TRUE, 
+     col=NA, 
+     border="#8A5543"
+     ) 
+
+###########################
+# On rajoute layoutLayer()
+###########################
+
+
+layoutLayer(title = "Titre de la carte", 
+            # <- On ajoute avec les sources la petite phrase pour l'ACP. Pour faire des sauts de lignes sur la carte, on utilise \n dans le texte
+            sources = "Sources: INSEE 2017, IGN 2019. Résultats d'une ACP normée sur un tableau\ndécrivant les communes alsaciennes en 2015 en fonction des CSP",
+            author = "Votre nom", 
+            frame = TRUE, 
+            north = FALSE, 
+            col = "#cdd2d4", 
+            coltitle = "#8A5543",
+            scale = 25, # La taille de l'échelle, en km
+            posscale = "bottomright" # la position de l'échelle
+            )   
+
+
+#####################
+# La légende de l'ACP 
+#####################
+
+# On définit les éléments de la légende, dans l'ordre !!! 
+# D'abord l'interprétation des coordonnées positives, puis on laisse 3 textes de caissons vides, et enfin on précise l'interprétation des coordonnées négatives.
+interpretation_chaudes_vers_froides <- c("Forte représentation des cadres", "", "","", "Forte représentation des ouvriers et des\nemployés\n")
+
+
+# les couleurs des caissons de légende, ne pas modifier
+couleurs_chaudes_vers_froides<- c("#83026b", "#ffb7f1", "#f6f6f6", "#afd4a0","#1a7832")
+
+
+# On ajoute une légende spécifique pour l'ACP. On utilise pour cela legendTypo() du package cartography
+legendTypo(#<-- On précise le titre de la légende, avec la part de variance et le facteur cartographié
+           title.txt = "Principales différenciations entre\nles communes (coordonnées sur\nle 1er facteur, 23,8% de la variance totale)",
+           title.cex = 0.8,
+           values.cex = 0.6,
+           pos = "right", # <- La position de la légende
+           col = couleurs_chaudes_vers_froides,
+           categ = interpretation_chaudes_vers_froides, 
+           cex = 0.75,
+           nodata = FALSE,
+           frame = TRUE,
+           symbol="box")
+
+```
+
+Cette cartographie avec R est un peu plus complexe et vous demandera sans doute quelques ajustement. N'hésitez pas à me contacter pour vous aider dans vos mise en page.
+
+Avant de faire votre propre ACP, vous pouvez cartographier d'autres facteurs de l'ACP en Alsace afin de voir les différentes répartitions des coordonnées des individus.
+

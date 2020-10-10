@@ -1,0 +1,79 @@
+---
+title: "2 : R, les variables"
+author: "Florian Bayer"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+---
+
+*************************
+# Objectifs de l'exercice
+*************************
+
+Les variables permettent de stocker des informations plus ou moins complexe en mémoire, pour ensuite les réutiliser, le plus souvent dans des $fonctions$. C'est ce que vous avez fait dans l'exercice précédent, en créant une variable DF puis en la réutilisant dans une fonction summary ou dans des graphiques.
+
+Dans cett esérie d'exercices, vous allez apprendre les bases de la manipulation des variables dans R: 
+* créer et assigner une valeur à une variable
+* voir les les principaux types de variables qui existent
+* manipuler des variables entre elles.
+
+****************************
+# 1 -Création d'une variable
+****************************
+
+Nous allons créer ($déclarer$) une première variable, MaVariable et lui $assigner$ une valeur 5 à l'aide de l'opérateur $<-$
+
+Lancez le bloc de code ci-dessous
+```{r exercice_2.1}
+MaVariable <- 5
+```
+
+Vous venez de créer une variable numérique et plus précisément une variable de type integer. Il existe en effet plusieurs types de variables :
+  * 1 -numériques dont des entiers (integer) ou des doubles (avec des virgules. La décimale sur R est un point)
+  * 2 -textes (character), qui s'écrivent avec des '' ou des "" de part et d'autre de la valeur : "Je suis une variable texte"
+  * 3 -dataframe, qui sont des tableaux stockés dans une variable
+  * 4 -d'autres types, mais que nous ne pourrons pas tous aborder.
+
+RStudio est un environnement de développement pour R, qui permet de simplifier le travail du statisticien. Dans la fenêtre de droite, vous devriez voir sous Values MaVariable, avec sa valeur = 5. Une autre façon d'afficher la valeur d'une variable est de lancer l'instruction : print(MaVariable). Le résultat s'affichera dans la console en bas. La fonction print est très pratique pour valider la progression de votre travail.
+
+Dans le bloc de code ci-dessous, affichez le contenu de MaVariable à l'aide de la fonction print()
+```{r exercice_2.2}
+
+```
+
+Créez ci-dessous 2 nouvelles variables MaVariableTexte et MaVariableDouble. La première contiendra une valeur texte de votre choix, la seconde une valeur avec une décimale. Affichez ensuite le contenu de vos variables.
+```{r exercice_2.3}
+
+```
+
+Nous allons vérifier le type de variable que vous venez de créer. Pour cela, tapez $typeof()$ dans le bloc de code suivant, en renseignant entre les parenthèses le nom de vos deux nouvelles variables. Affichez et observez le résultat de cette instruction. 
+```{r exercice_2.4}
+
+```
+Remarquez que R assigne le type de variable automatiquement en fonction de la valeur que vous lui avez renseigné.
+
+**************************
+# 2 -Modifier une variable
+**************************
+
+Vous pouvez changer la valeur d'une variable en réasignant la nouvelle valeur, toujours à l'aide de l'opérateur <-. Réasignez la valeur 10 à MaVariable ci-dessous et affichez sa nouvelle valeur à l'aide de print()
+```{r exercice_2.5}
+
+```
+
+
+L'intérêt des variables n'est pas que de stocker des valeurs, mais aussi de pouvoir faire des opérations. Ci-dessous, additionnez MaVariable avec MaVariableDouble en stockant le résultat dans une nouvelle variable : Addition. Pour cela, il suffit d'assigner à la variable Addition la somme de MaVariable et de MaVariableDouble (signe +)
+```{r exercice_2.6}
+
+```
+
+L'intérêt de la programmation n'est pas de créer une multitude de variables, mais plutôt d'en faire l'économie. En stockant des informations dans les variables, en les faisant évoluer (par des calculs) ou encore en apposant des conditions (si ma variable est inférieure à 0, alors fait ceci, sinon fait autre chose), on touche à l'intérêt de la programmation informatique. Ce cours ne vise pas vous former à type de démarche, mais nous pourrons en avoir l'usage durant le semestre.
+
+La prochaine série d'exercice abordera des fonctionnalités propres à R pour la partie statistique.
+
+Avant de passer à l'exercice suivant, pensez à sauvegarder le document 2-variables.rmd. Si vous fermez Rstudio puis réouvrez le fichier 2-variables.rmd, les variables calculées dans la session précédentes seront perdues. L'intérêt du code est de pouvoir les recalculer et ce toujours de la même manière, en suivant votre code. Votre démarche de travail est donc facilement compréhensible par une personne extérieur et vous pourrez plus facilement détecter des erreurs de calcul.
+

@@ -1,0 +1,239 @@
+---
+title: "Corrélation"
+author: "Florian Bayer"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+---
+
+*************************
+# Objectifs de l'exercice
+*************************
+
+Dans l'exercice 5, vous avez chargé dans un nouveau dataframe $DF.dossier$ votre variable d'intérêt (abstention, % de vote pour un candidat etc.). Vous avez également fait en sorte de ne conserver que les communes des territoires que vous allez utiliser.
+
+Dans ce nouvel exercice, vous allez charger des données supplémentaires à partir de fichiers Excel, puis les joindre à votre dataframe. Vous ferez ensuite une analyse de corrélation entre votre variable d'intérêt et vos variables explicatives. Enfin, vous testerez et analyserez les résultats.
+
+**********************************************
+# 1-Installation et/ou chargement des packages
+**********************************************
+
+Nous réutilisons le programme de l'exercice 5 pour charger et / ou installer un nouveau package : XLConnect. Ce dernier permet de charger facilement un tableur Excel dans un dataframe R. Trois autres packages, Hmisc, corrplot et RColorBrewer sont aussi installés pour la suite de l'exercice.
+
+Lancez le bloc de code ci-dessous en n'oubliant pas de lire les différents commentaires.
+```{r setup, include=FALSE}
+
+# On renseigne dans requiredPackages les packages R que l'on souhaite utiliser dans le document 
+# Il s'agit d'une liste au format : c(valeur_1,valeur_2,...,valeur_n) 
+
+requiredPackages = c('ggplot2','summarytools','dplyr',
+                     'readxl',# un package pour charger des fichiers Excel
+                     'Hmisc', 'corrplot', # deux packages pour la corrélation
+                     'RColorBrewer' # Très utile en cartographie et pour avoir des palettes de couleurs efficaces
+                     )
+
+# Les lignes de codes ci-dessous permet de parcourir chaque valeur de la liste requiredPackages. La valeur de la liste est sous la forme d'une variable p
+# Pour chaque valeur, on vérifie d'abord si le package est déjà installé. S'il ne l'est pas, on l'installe
+# Sinon on se contente de le charger à l'aide de library()
+for(p in requiredPackages){
+  if(!require(p,character.only = TRUE)) install.packages(p)
+  library(p,character.only = TRUE)
+}
+```
+
+*******************************
+# 2-Chargement du fichier Excel
+*******************************
+
+Avant de charger votre fichier Excel, vérifiez que ce dernier est bien formaté (cf. mail du 15 février 2019) :
+*première colonne avec les codes des communes.
+*Première ligne avec les noms des champs.
+*Colonnes avec des codes et non des libellés (pop15 et non population communale en 2015).
+*Suppression des images s'il y en a.
+
+Si possible, essayez d'avoir sur un même tableau Excel l'ensemble de vos données. De plus, il est préférable d'enregistrer votre fichier Excel au format xlsx et non xls.
+
+Nous utilisons ensuite la fonction readWorksheetFromFile() du package XLConnect pour charger dans un nouveau dataframe DF.excel le contenu du fichier Excel :
+```{r 6.1_ChargeXL}
+
+# On charge dans un nouveau dataframe la feuille Excel qui vous intéresse. Complétez la fonction ci-dessous : 
+
+DF.excel <- read_excel("c:/emplacement de votre fichier.xlsx", # le chemin complet de votre fichier Excel, 
+                                                                          # comme un csv (cf. exercice 3)
+                            sheet = 1 # la feuille excel à charger : 1ère, 2eme, 3eme etc
+                      )
+
+```
+
+Si vous avez plusieurs fichiers Excel (ce qui est déconseillé), répétez l'opération en faisant attention à bien créer un nouveau dataframe à chaque fois.
+
+
+***********************************
+# 3-Ajout des données à DF.dossier
+***********************************
+
+Si ce n'est pas encore fait, chargez le dataframe DF.dossier créé dans l'exercice 5 (5-univariee.rmd). Il doit contenir au moins les codes communs et votre variable d'intérêt, sur le territoire concerné. Ensuite, en vous aidant de l'exercice 3.7 (3-dataframes.rmd) et du bloc de code ci-dessous, faites une jointure entre DF.dossier et DF.excel 
+```{r 6.2_jointure}
+
+# On utilise la fonction merge et non inner_join car les champs ne sont pas du même type
+DF.jointure <- merge(
+                    x =  , # la table initiale, normalement DF.dossier
+                    y = , # à laquelle on associe la seconde table, DF.excel
+                          
+                          # Comme les colonnes communes n'ont probablement pas le même nom entre DF.dossier et DF.excel, on utilise les arguments by.x et by.y pour préciser les colonnes qui serviront pour la jointure sur chaque table :
+                    by.x =  "", 
+                    by.y = "")  
+                                      
+
+```
+Vérifiez que DF.jointure contient bien les données de DF.dossier et de DF.excel.
+Répétez l'opération si vous avez chargez plusieurs fichiers Excel dans des dataframes différents.
+
+
+***********************************
+# 4-Hypothèses
+***********************************
+
+Afin de préparer au mieux votre analyse de corrélation, il est important de poser dans un premier temps vos hypothèses quant à la relation entre votre variable d'intérêt et vos variables explicatives : comment va se comporter selon vous la variable d'intérêt par rapport à chaque variable explicative ?
+
+Pour l'ensemble de vos variables, décrivez rapidement ci-dessous la relation attendue avec votre variable d'intérêt. Cette partie vous sera utile lors de la rédaction de votre article...
+
+
+*********************
+# 5-Analyse univariée
+*********************
+
+Comme abordé en cours, il est important de comprendre vos variables explicatives. De plus, lorsque l'on utilise le coefficient de corrélation de Bravais-Pearson, vous devez vous assurez que l'ensemble de vos variables suivent approximativement une loi normale.
+
+En vous basant sur les éléments de l'exercice 5 (5-univariee.rmd), réalisez l'analyse univariée complète de vos nouvelles variables. Commentez les résultats.
+
+Si vos données ne suivent pas une loi normale, poursuivez quand même l'exercice. Nous verrons plus tard comment les transformer pour les rendre approximativement normales.
+```{r 6.3_Univariée}
+
+
+
+
+```
+
+
+*******************
+# 6-Nuage de points
+*******************
+
+Comme pour l'analyse univariée, l'analyse bivariée peut se faire en deux étapes : 
+
+* à l'aide de graphiques pour visualiser la forme, l'intensité et le sens de la relation sous la forme d'un nuage de points.
+* Puis en s'appuyant sur des données factuelles grâce aux coefficients de corrélation.
+
+Pour réaliser le nuage de points, nous utiliserons ggplot. L'exemple ci-dessous illustre la création d'un nuage de points avec le jeu de données mtcars. Lancez le bloc de code pour visualiser le résultat.
+```{r 6.3_exemple_Nuage_Points}
+
+# on précise à ggplot qu'on utilise les données de mtcars. En x on ajoute la variable poids (wt) et en y la variable d'autonomie de la voiture (miles per gallon, mpg). Ensuite, au lieu d'utiliser geom_histogram(), on utilise geom_point() qui permet de créer un nuage de points. Enfin, on ajoute theme(aspect.ratio=1)  qui permet de garder les mêmes longueurs hauteur / largeur sur le graphique
+
+ggplot(data = mtcars, aes(x=wt, y=mpg)) +
+  geom_point()+
+  theme(aspect.ratio=1)                            
+
+```
+On constate bien que plus la voiture est légère, plus elle peut parcourir de distance (son autonomie est plus grande).
+
+
+En vous aidant du bloc de code précédent, créez les nuages de points à partir de vos données. y correspond à la variable à expliquer, x la variable explicative. Faites autant de nuage de points qu'il y a de variables explicatives. Notez sous chaque bloc vos observations.
+```{r 6.4_Nuage_Points}
+
+
+
+
+
+```
+
+
+
+***********************************************
+# 7-matrice des corrélations de Bravais Pearson
+***********************************************
+
+Grâce à vos graphiques, vous pouvez vous faire une meilleure idée de la forme et de l'intensité de vos relations. Il est néanmoins nécessaire de mesurer objectivement vos observations. Pour cela vous allez utiliser les coefficients de corrélation de Bravais-Pearson et de Spearman. Comme toujours en statistique, il est nécessaire de tester ces résultats. Nous verrons comment R peut vous fournir rapidement la significativité de vos coefficients de corrélation.
+
+Dans un premier temps, nous allons utiliser la fonction rcorr() du package Hmisc qui permet de créer une $matrice$ de corrélation. Cette matrice a l'avantage de calculer les coefficients de corrélations pour l'ensemble des variables, sous la forme d'une matrice, ainsi qu'une nouvelle matrice avec la significativité des résultats. Lancez le bloc de code ci-dessous pour visualiser le résultat de cette fonction.
+```{r 6.5_exemple_corr_BP}
+
+rcorr(x = as.matrix(mtcars),# le dataframe qui contient vos données, ici mtcars. Il faut préciser as.matrix() pour cette fonction.
+      type = "pearson") # le coefficient de corrélation de Bravais-Pearson
+
+
+```
+Vous devriez voir deux matrices. La première contient les coefficients de corrélation de Bravais-Pearson (entre -1 et +1), la seconde des p-values (de 0 à 1).
+
+Lors d'un test de significativité réalisé manuellement, vous définissez votre seuil alpha avant de réaliser le test. En science sociale, un seuil alpha de 5% est souvent choisi. Avec les logiciels de statistiques comme R, vous ne définissez pas un seuil alpha, mais une p-value peut-être fournie. Elle vous donne le seuil de significativité du calcul. Par exemple une p-value de 0.05 correspond à un seuil alpha de 5%. Une p-value de 0.01 correspond à un alpha de 1%. Plus la p-value est faible, plus vous pouvez rejeter H0 avec confiance.
+
+En vous aidant de l'exemple précédent, calculez la matrice de corrélation de Bravais-Pearson de votre dataframe DF.jointure.
+```{r 6.6_corr_BP}
+
+# attention, il faut uniquement mettre les données numériques du dataframe. pour cela, on utilise la propriété suivante df[,i:j], avec df le dataframe, la zone entre le premier crochet et la virgule correspond au rang de la ligne. En la laissant vide, on précise que l'on veut toutes les lignes. En mettant df[1,], on afficherait que la première ligne et toute les colonnes. i correspond à votre première colonne contenant des données numériques, j la dernière. rcorr() ne peut en effet pas fonctionner sur les données non-numériques. Par exemple mtcars[,4:6] afficher les colonnes 4 à 6 du dataframe mtcars. mtcars[1,4:6] affiche la première lignes des colonnes 4 à 6 de mtcars.  mtcars[, c(1,7,3)] affichera les colonnes 1, 7 et 3. mtcars[, c(1,3,7)] affichera les colonnes 1, 3 puis 7.
+
+# Pour votre dataframe, faites en sorte d'afficher uniquement les colonnes numériques que vous voulez analyser pour votre corrélation.
+
+
+
+```
+Détaillez ci-dessous les résultats pour votre variable d'intérêt avec les variables explicatives, en vous appuyant sur les coefficients de corrélation et la table des p-value.
+
+
+***********************************************
+# 8-matrice des corrélations de Bravais Pearson
+***********************************************
+
+Nous allons maintenant faire la même matrice, mais avec le coefficient de corrélation de Spearman. Ce dernier ne se base pas sur les valeurs mais sur les rangs. Servez-vous de votre code précédent (6.6) et changez le paramètre type = "pearson" par type = "spearman".
+```{r 6.7_corr_Spearman}
+
+
+
+```
+Détaillez ci-dessous les résultats pour votre variable d'intérêt avec les variables explicatives, en vous appuyant sur les coefficients de corrélation et la table des p-value.
+
+
+
+***********************************************
+# 9-autres outils pour la corrélation
+***********************************************
+
+Il existe beaucoup de packages R qui permettent de réaliser des corrélations. Par exemple le package corrplot permet de réaliser des matrices de corrélations graphiques. Lancez le bloc de code ci-dessous pour visualiser le résultat de la fonction corrplot() http://www.sthda.com/french/wiki/visualiser-une-matrice-de-correlation-par-un-correlogramme
+```{r 6.8_corrplot}
+
+#On stocke dans un dataframe mcor une matrice de corrélation. Cette dernière n'est pas créée avec la fonction rcorr du package Hmisc mais avec cor(), qui est la fonction de base pour la corrélation avec R. Elle ne permet pas de tester les p-value aussi facilement qu'avec Hmisc.
+mcor <- cor(mtcars) 
+
+#Puis on utilise la fonction corrplot() du package corrplot()
+corrplot(corr = mcor, # la matrice précédemment calculé
+         type = "upper", # Pour ne garder qu'un seul côté de la matrice
+         col = rev(brewer.pal(n = 8, name = "RdYlBu")))  # On utilise le package Colorbrewer pour avoir des couleurs efficaces sur notre graphique. La fonction rev() permet d'inverser la palette -> du bleu vers le rouge et non du rouge vers le bleu)
+
+
+```
+Cette matrice permet de visualiser très rapidement les corrélations les plus importantes sur d'importants volumes de données
+
+
+En complexifiant un peu le code, on peut aussi visualiser les corrélations significatives avec un alpha à 5%
+```{r 6.9_corrplot_pvalue}
+
+mcor <- cor(mtcars) 
+
+sign <- cor.mtest(mtcars, conf.level = .95) # la fonction R cor.mtest() est utilisé pour calculer la significativité d'une corrélation. Hmisc reste toutefois plus pratique à utiliser dans un autre contexte
+
+corrplot(corr = mcor, # la matrice précédemment calculé
+         p.mat = sign$p, # les p-value calculées avec cor.mtest()
+         sig.level = .05, # le seuil de significativité retenu (5% ici)
+         type = "upper", 
+         col = rev(brewer.pal(n = 8, name = "RdYlBu"))
+         )
+
+```
+
+Vous pouvez tester corrplot() sur votre jeu de données si vous le souhaitez.
+
+D'autres packages comme GGally sont très utiles, avec sa fonction ggpairs, qui permet de voir la forme de la distribution en univarié, les coefficients de corrélation et les nuages de points : http://ggobi.github.io/ggally/#ggallyggpairs

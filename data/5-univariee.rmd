@@ -1,0 +1,91 @@
+---
+title: "Dossier"
+author: "Florian Bayer"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+---
+
+*************************
+# Objectifs de l'exercice
+*************************
+
+Vous allez maintenant appliquer vos connaissances pour analyser les données utilisées dans votre dossier. Comme nous n'en sommes qu'au début du semestre, vous ne disposez pas encore de toutes vos variables. Vous allez donc dans un premier temps faire l'analyse univariée de votre variable d'intérêt (le taux d'abstention, le % de vote pour tel parti politique etc.)
+
+D'abord, nous installerons un nouveau package : summarytools. Quelques lignes de codes permettant d'installer ou de charger facilement des package sont fournies. Vous pourrez réutiliser et même compléter ces quelques lignes de codes par la suite.
+
+Ensuite, vous ferez en sorte de préparer un dataframe contenant :
+* votre variable d'intérêt (il peut y en avoir plusieurs, par exemple le taux d'abstention en 2007 vs 2017)
+* les codes communes et les libellés des communes
+* filtré sur votre zone d'étude (pas sur toute les données)
+
+Enfin, vous réaliserez l'analyse univariée de votre variable d'intérêt et vous la $commenterez$.
+
+**********************************************
+# 1-Installation et/ou chargement des packages
+**********************************************
+
+Le bloc de code ci-dessous permet de charger facilement un ou plusieurs packages. Si le package n'est pas déjà installé, une commande le fait automatiquement pour vous (ligne if(!... ). Sinon le package est simplement chargé (ligne library(p,...).
+```{r setup, include=FALSE}
+
+# On renseigne ici les packages R que l'on souhaite utiliser dans le document 
+# Il s'agit d'une liste (format c(valeur_1,valeur_2,...,valeur_n) )
+requiredPackages = c('ggplot2','summarytools','dplyr')
+
+# Les lignes de codes ci-dessous permet de parcourir chaque valeur de la liste requiredPackages. La valeur de la liste est sous la forme d'une variable p
+# Pour chaque valeur, on vérifie d'abord si le package est déjà installé. S'il ne l'est pas, on l'installe
+# Sinon on se contente de le charger à l'aide de library()
+for(p in requiredPackages){
+  if(!require(p,character.only = TRUE)) install.packages(p)
+  library(p,character.only = TRUE)
+}
+```
+
+*********************************
+# 2-Le dataframe de votre dossier
+*********************************
+Vous allez préparer le dataframe qui servira aux analyses de votre dossier. Nommez le DF.dossier. Utilisez les outils abordés dans le 3-dataframes.rmd :
+*read.csv() $exercice_3.1$ pour charger le ou les fichiers csv nécessaires à votre dossier : https://cours.univ-paris1.fr/mod/resource/view.php?id=279898
+*dplyr::inner_join() $exercice_3.7$ si vous avez besoin de faire des jointures entre plusieurs résultats de présidentielles
+*dplyr::select()  $exercice_3.5$ pour ne garder que les colonnes qui vous intéressent (cf. objectifs de l'exercice ci-dessus)
+*dplyr::filter()  $exercice_3.8$ pour filtrer sur les départements de votre dossier
+
+Cette partie sera complétée au fil de l'avancée du semestre, en ajoutant de nouvelles données.
+
+```{r 2.1.dataframe_dossier}
+
+
+```
+
+N'oubliez pas de vérifier si votre dataframe contient bien toutes les données nécessaires à votre analyse.
+
+***************************
+# 3-Le package summarytools
+***************************
+summarytools est un package dédié à l'analyse univariée. Il possède une fonction très utile pour décrire une série de données : descr(). D'autres sont disponibles mais non abordées pour le moment. https://cran.r-project.org/web/packages/summarytools/vignettes/Introduction.html
+
+```{r 3.1.descr_mtcars}
+# descr() permet d'afficher les principaux calculs de l' analyse univariée : moyenne, médiane, quartiles, assymétrie (Skew) et Kurtosis.
+# cf. cours sur l'univariée
+
+# Vous pouvez tester la fonction avec le jeu de données tests mtcars.
+descr(mtcars)
+```
+
+Faites la même chose pour au moins la variable d'intérêt de votre dossier. Utilisez le dataframe créé au 2.1.dataframe_dossier
+```{r 3.2.descr_dossier_stat}
+
+```
+
+Compléter cette analyse par un ou plusieurs graphiques (cf. 4-graphiques.rmd) : histogramme, boxplot
+```{r 3.3.descr_dossier_graph}
+
+```
+
+Ecrivez quelques lignes ci-dessous pour décrire votre variable d'intérêt, en vous appuyant sur les résultats des blocs descr_dossier_stat et descr_dossier_graph
+
+

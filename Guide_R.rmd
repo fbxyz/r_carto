@@ -1,0 +1,1157 @@
+---
+title: "Guide_R.rmd"
+author: "Florian Bayer"
+date: "22/03/2019"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+---
+
+L'objectif de ce document est de vous fournir des exemples R-Markdown qui vous permettront de produire facilement les analyses nécessaires à votre dossier.
+
+Ce document est organisé par bloc de code en essayant de conserver une certaine logique dans les étapes nécessaires à la réalisation de vos analyses. Toutes ne sont pas encore finalisées :
+
+0. chargement des packages --> finalisée
+1. import des Données --> finalisée
+2. construction du dataframe --> finalisée
+3. statistiques univariées --> finalisée
+4. graphiques univariées --> finalisée
+
+5. cartographie --> en construction
+6. analyse bivariée --> en construction
+7. régression multiple --> en construction
+8. Analyse en Composante Principale --> en construction
+9. Classification Ascendante Hiérarchique--> en construction
+
+****************************
+# 0. Chargement des packages
+****************************
+
+Cette étape sert à installer et/ou charger les packages nécessaires à votre étude
+```{r setup, include=FALSE}
+
+# Ci-dessous, la liste des packages qui ont été utilisés dans les exercices R. Vous pouvez compléter la liste si besoin.
+requiredPackages = c('ggplot2', # pour les graphiques
+                     'summarytools', # Pour l'analyse univariée
+                     'sp', # pour charger des shapefiles et manipuler de l'information géographiques
+                     'dplyr', # des fonctionnalités pour modifier les dataframes (jointures, sélections, filtres)
+                     'spdplyr', # permet à dplyr de fonctionner avec des couches géographiques
+                     'readxl', # si vous souhaitez charger des fichiers excels
+                     'Hmisc', # permet de réaliser facilement une matrice de corrélation et d'obtenir les p-values
+                     'corrplot', # pour créer un diagramme des corrélations
+                     'cartography',# Un package de l'UMR RIATE, Très pratique pour la création de carte sur R
+                     'RColorBrewer', # Très utile en cartographie et pour avoir des palettes de couleurs efficaces
+                     'FactoMineR', 'factoextra',# Pour l'ACP
+                     'car' # pour les vif de la la régression multiple
+                     )
+
+# Une boucle qui permet de parcourir la liste requiredPackages, de lire les éléments qui la composent un par un et d'installer ou charger la library
+for(p in requiredPackages){
+  if(!require(p,character.only = TRUE)) install.packages(p)
+  library(p,character.only = TRUE)
+}
+```
+
+***********************
+# 1. import des Données
+***********************
+
+La première étape est de charger les Données nécessaires à l'étude. Plusieurs solutions sont possibles :
+*Charger les Données RData qui contiennent les dataframes des résultats aux élections présidentielles
+*Charger des Données csv
+*Charger des Données Excel
+
+Il sera sans doute nécessaire de combiner ces approches :
+*Chargement des Données présidentielles au format RData ou CSV pour vos ou votre variable dépendante.
+*Chargement des variables indépendantes, probablement à partir de Données INSEE, au format Excel ou csv.
+
+Enfin, afin de pouvoir produire des cartes, il faudra charger des Données géographiques. Ces dernières ont été préparées et sont sous la forme d'un RData.
+
+Les 3 premiers blocs de codes ci-dessous vous rappelle comment charger différents types de Données sous R dans un dataframe. Pensez à renommer VotreDataFrame si besoin. Le 4ème bloc permet de charger les Données géographiques.
+
+Attention les chemins doivent être séparés par des / et non des \ par exemple : "C:/Users/Florian/presid2017.csv" et non "C:\Users\Florian\presid2017.csv" 
+
+## 1.1 RData
+Pour charger un RData :
+```{r 1.1.RData}
+
+# Contrairement aux deux autres fonctions permettant de charger un csv ou un fichier Excel, il n'est pas nécessaire d'attribuer le résultat de la fonction load() à un dataframe. Toutes les variables contenues dans le fichier RData seront automatiquement ajoutées.
+
+# De plus, vous n'êtes pas obligé de dezipper le fichier presid2002_2017.zip : 
+load(unzip("presid2002_2017.zip", files="presid2002_2017.RData"))
+
+# On en profite pour changer le type de colonnes dans le dataframe. Si la colonne est un facteur, elle est transformée en character.
+presid2002 %>% mutate_if(is.factor, as.character) -> presid2002
+presid2007 %>% mutate_if(is.factor, as.character) -> presid2007
+presid2012 %>% mutate_if(is.factor, as.character) -> presid2012
+presid2017 %>% mutate_if(is.factor, as.character) -> presid2017
+```
+
+## 1.2 CSV
+Pour charger un csv :
+```{r 1.2.csv}
+
+VotreDataFrame <- read.csv(file = "renseigner ici le chemin complet du fichier csv", 
+                   header = TRUE, # La première ligne contient-elle les libellés des colonnes : TRUE (vrai) ou FALSE (faux)
+                   sep = ";", # comment sont séparés les colonnes (en France, par des ;)
+                   dec = ",", # les décimales s'expriment en point ou en virgule
+                   encoding="Windows-1252" # permet de choisir l'encodage des Données et évite des caractères étranges dans le dataframe.
+                   )
+```
+
+## 1.3 Excel
+Pour charger un fichier Excel :
+```{r 1.3.Excel}
+
+# le package readxl a l'avantage de ne pas être dépendant de composant sur votre ordinateur (Java ou PERL). Vous pouvez donc charger des fichiers Excel sans avoir à installer des bibliothèques complémentaires sur votre ordinateur (et de déclarer des variables d'environnement).
+
+VotreDataFrame <- read_excel("C:/Users/Florian/Downloads/presid2012 et 17.xlsx",
+                            sheet = 1 # la feuille excel à charger : 1ère, 2eme, 3eme etc
+                      )
+
+```
+
+## 1.4 Données géographiques
+
+Les Données géographiques sous R sont souvent du type SpatialPolygons, SpatialPoints, SpatialLines si elles n'ont qu'une géométrie, SpatialPolygonsDataframe, SpatialPointsDataframe et SpatialLinesDataframe si elles portent en plus des informations attributaires (comme sur un SIG).
+```{r 1.4.Shapefile}
+# Plusieurs packages existent pour charger des Données géographiques. Je vous conseille d'utiliser raster, qui ne nécessite pas d'installer des outils supplémentaires sur votre ordinateur. Pour charger un shapefile avec raster, lancez simplement la fonction shapefile()
+
+VotreShapeFile <- raster::shapefile("chemin du shapefile, avec l'extension .shp")
+
+```
+
+Les couches géographiques des communes, départements et régions ont déjà été chargées dans un RData et nous verrons comment les ajouter sous la forme de variables.
+```{r 1.4.Geo_Rdata}
+# De nouveau, on utilise load, mais cette fois-ci le RData contient des Données géographiques
+load(unzip("L93_GEO_2018.zip", files="L93_GEO_2018.RData"))
+
+```
+
+*****************************
+#2. Construction du dataframe
+*****************************
+
+Une fois vos fichiers nécessaires à votre dossier chargé, vous pouvez construire un dataframe qui contiendra les Données de votre étude et le code des communes. Cette colonne servira en effet à joindre vos différents dataframe entre eux, afin d'en créer un nouveau. 
+
+## 2.1 Jointure
+Les jointures sous R se font à l'aide des fonctions dplyr::inner_join, dplyr::left_join ou merge. L'exemple ci-dessous vous montre comment joindre les Données géographiques communales aux Données présidentielles 2017. Vous pouvez appliquer cet exemple à d'autres dataframes, géographiques ou non.
+```{r 2.1.1.Jointure}
+
+# Dans cet exemple, on fait un inner_join. C'est à dire que seules les lignes communes aux deux tables sont conservées. 
+# Vous pouvez aussi faire un left_join, qui conservera toutes les colonnes de la table de gauche. Si des lignes sont manquantes dans la table de droite, les valeurs apparaitront comme manquantes.
+
+# Pour plus de simplicité, on nomme souvent les spatial dataframe spdf (contre df pour les dataframes)
+
+SPDF_exemple <- dplyr::inner_join(x=L93_COM_2018, # la table à gauche de la jointure
+                                                y=presid2017,
+                                                by = c("INSEE_COM"="CODGEO"))
+```
+
+Vous pouvez évidemment ajouter à SPDF_exemple de nouvelle données, par exemples les données des catégorie socio-professionnels de la table CSP2015
+
+```{r 2.1.2.Jointure}
+
+SPDF_exemple <- dplyr::inner_join(x=SPDF_exemple, # la table à gauche de la jointure
+                                                y=CSP2015,
+                                                by = c("INSEE_COM"="INSEE_CODE"))
+```
+
+
+## 2.2 Sélection des lignes
+```{r 2.2.Filtre}
+
+# Puis on ne Sélectionne que les communes de l'Alsace (INSEE_DEP %in% c('67','68' ) grâce à la fonction dplyr filter()
+SPDF_exemple <- dplyr::filter(.data=SPDF_exemple,
+                                            INSEE_DEP %in% c('67','68') )
+                                          
+```
+
+## 2.3 Calcul d'une colonne
+```{r 2.3.Champs}
+
+# Enfin, on calcule le taux d'abstention au premier et seconde tour des présidentielles, puis son évolution. On utilise la fonction dplyr, mutate()
+
+# On définit dans un premier temps le dataframe, puis on crée de nouvelle colonne en précisant le calcule à faire. Les colonnes à ajouter P2017T1_TX_ABST, P2017T2_TX_ABST et P2017_EVOL_ABST sont séparées par des virgules
+
+SPDF_exemple <- dplyr::mutate(.data=SPDF_exemple, 
+                                            P2017T1_TX_ABST = P2017T1_ABST / P2017T1_INSC * 100,
+                                            P2017T2_TX_ABST = P2017T2_ABST / P2017T2_INSC * 100,
+                                            P2017_EVOL_ABST = (P2017T2_TX_ABST - P2017T1_TX_ABST) / P2017T1_TX_ABST *100 )
+                                          
+```
+
+## 2.4 Conditions sur une colonne
+```{r 2.4.colonne}
+
+# A l'aide de mutate(), on peut aussi passer des conditions pour calculer des Données non numériques. Par exemple, on peut comparer les résultats des votes au second tours 2017. Si le nombre de vote pour E.Macron sont supérieurs à ceux de M.Le Pen dans la commune, alors E.Macron est arrivée en tête. Sinon il s'agit de M.Le Pen. Si la première condition est vérifiée, on inscrit E.Macron dans une nouvelle colonne. Sinon M.Le Pen. On combine pour cela mutate() avec la fonction if_else()
+
+SPDF_exemple <- dplyr::mutate(.data=SPDF_exemple, # Pour chaque ligne du dataframe 
+                                            
+                              P2017T2_TET = if_else(condition = P2017T2_MACR > P2017T2_LEPE, # si E.Macron a eu plus de voix que M.Le Pen
+                              true = 'E.Macron', # et que le résultat est vrai, on écrit E.Macron
+                              false = 'M.Le Pen')) # Sinon on écrit M.Le Pen
+                                      
+```
+
+Il faudra également faire des Sélections de colonnes avec dplyr::select() et de lignes avec dplyr::filter. Cette dernière fonction permettra de réduire votre dataframe à la zone d'étude (un ou plusieurs départements par exemple).
+
+## 2.5 Sélection des colonnes
+```{r 2.5.Select}
+
+# On décide de ne conserver que quelques colonnes : INSEE_COM, le libellé des communes, INSEE_DEP,, INSEE_REG, les variables calculées précédemment et les données des CSP. Pour cela on utilise la fonction select() de dplyr
+
+SPDF_exemple <- dplyr::select(.data=SPDF_exemple,
+                              INSEE_COM,LIBGEO,INSEE_DEP,INSEE_REG,
+                              P2017T2_TET,P2017T1_TX_ABST,P2017T2_TX_ABST,P2017_EVOL_ABST,
+                              CSP_AGR_15,CSP_OUV_15,CSP_EMP_15,CSP_CAD_15,CSP_PI_15,CSP_RET_15,CSP_AUT_15)
+
+                                             
+```
+***************************
+# 3. Statistiques univariées
+***************************
+
+##  3.1 Données quantitatives
+Pour l'analyse univarée, le package summarytools possède une fonction Très utile pour décrire une série de Données : descr(). En revanche, seules les Données quantitatives sont traités par descr()
+```{r 3.1.descr}
+# descr() permet d'afficher les principaux calculs de l'analyse univariée : moyenne, médiane, quartiles, asymétrie (Skew) et Kurtosis.
+
+# Sur un dataframe classique, tapez simplement le nom du dataframe :
+descr(presid2017)
+
+# Si vous utilisez descr() sur un SpatialPolygonDataframe, il faut préciser que les Données sont dans @data:
+descr(SPDF_exemple@data)
+
+# Afin de n'afficher qu'une seule colonne, vous pouvez spécifier la colonne à traiter :
+descr(SPDF_exemple@data$P2017T1_TX_ABST)
+```
+
+##  3.2 Données qualitatives
+Pour des Données qualitatives, vous pouvez utiliser freq() sur une colonne
+```{r 3.1.descr}
+
+#  On voit ici qui est arrivé en tête dans les communes alsaciennes
+summarytools::freq(SPDF_exemple@data$P2017T2_TET)
+
+#  Et par départements
+summarytools::freq(SPDF_exemple@data$INSEE_DEP)
+
+```
+
+*************************
+# 4. Graphiques univariés
+*************************
+
+Les graphiques peuvent être créés avec le package ggplot2. Son fonctionnement est toujours le même :
+*1 Création d'un objet ggplot() qui contient le dataframe et les colonnes à utiliser
+*2 Ajout d'un objet qui précise le type de graphique (histogramme, boxplot etc.)
+*3 Ajout des éléments de mise en page
+
+## 4.1 Histogramme
+Un histogramme permet de représenter facilement la forme d'une série de Données quantitative. Il découpe la série en classes d'amplitudes égales (de 1 en 1 par exemple) et compte le nombre d'individus dans chaque classe (entre 0 et 1, puis entre 1 et 2, 2 et 3 etc.).
+```{r 4.1.histogramme}
+
+# on crée un objet ggplot() avec les Données du SpatialPolygonDataframe. On rajoute donc @data à la fin. Pour un dataframe non géographique, il ne faut pas ajouter @data. L'aes() permet de préciser la variable à représenter en x. Comme un histogramme compte les individus dans des classes, on ne précise pas de y.
+
+ggplot(SPDF_exemple@data, aes(x=P2017T2_TX_ABST)) +
+  geom_histogram(binwidth = 0.5, # les classes iront de 0.5 en 0.5. A changer selon votre min et max... 
+                 fill="grey50",  # les barres de l'histogramme seront grises
+                 color="white")+ # avec un contours blanc.
+  xlim(c(0,35))+ #l'axe des x va commencer à 0 et se finir à 50
+  ylim(c(0,75))+ #l'axe des y va commencer à 0 et se finir à 75
+  ggtitle("Titre principal")+ # le titre principal
+  xlab("l'axe des abscisses")+ # le titre de l'axe des x
+  ylab("l'axe des ordonnées") # le titre de l'axe des y
+
+```
+
+## 4.2 Boxplot
+Vous pouvez également représenter une série de Données quantitatives à l'aide d'un boxplot
+```{r 4.2.boxplot1}
+
+# sur l'ensemble de la zone d'étude (pas de x dans l'aes)
+ggplot(SPDF_exemple@data, aes( y=P2017T2_TX_ABST)) + 
+  geom_boxplot()+ # on utilise un boxplot
+  ggtitle("Titre principal")+ # le titre principal
+  xlab("l'axe des abscisses")+ # le titre de l'axe des x
+  ylab("l'axe des ordonnées") # le titre de l'axe des y
+
+```
+
+```{r 4.2.boxplot2}
+
+# ou par départements (dans l'aes, on renseigne en x la colonne des départements)
+
+ggplot(SPDF_exemple@data, aes( x= INSEE_DEP, y=P2017T2_TX_ABST)) + 
+  geom_boxplot()+ # on utilise un boxplot
+  ggtitle("Titre principal")+ # le titre principal
+  xlab("l'axe des abscisses")+ # le titre de l'axe des x
+  ylab("l'axe des ordonnées") # le titre de l'axe des y
+
+```
+
+## 4.3 Diagramme en bâton
+Pour des Données qualitatives, on utilise un diagramme en bâton. On compte le nombre d'individus dans chaque modalité. 
+```{r 4.3.batons}
+
+# a noter qu'on ajoute un paramètre fill dans l'aes() qui permet de changer la couleur des barres en fonction d'une variable
+ggplot(SPDF_exemple@data, aes(x=P2017T2_TET, fill = P2017T2_TET)) + # x est la variable à compter
+  geom_bar(stat="count")+ # on précise à ggplot de compter
+  ggtitle("Nombre de communes alsaciennes où le candidat est arrivé en tête")+ # le titre principal. 
+  xlab("")+ # le titre de l'axe des x, ici on le laisse vide
+  ylab("Nombre de communes")+ # le titre de l'axe des y
+  scale_fill_manual(values=c("#E69F00", "grey50")) # On change les couleurs des barres, dans leur ordre d'apparition
+
+```
+
+
+
+*****************
+# 5. Cartographie
+*****************
+
+## 5.1 Carte choroplèthe
+Le bloc de code ci-dessous illustre la création d'une carte choroplèthe (représentation en aplat de valeur, le plus souvent de Données quantitative de taux). Les éléments que vous devez mettre obligatoirement à jour sont notés : # <-- Mettez à jour ...
+```{r 5.1.Choro}
+
+ZoneEtude <- c("67","68") # <--  Mettez à jour les codes départements de votre zone d'étude. La variable ZoneEtude sera appelée plusieurs fois dans le code suivant et vous n'aurez pas à modifier votre sélection à chaque fois
+
+# Les marges de la carte. N'y touchez pas
+opar <- par(mar = c(0,0,1.2,0))
+
+# L'emprise de votre zone d'étude et la couleur de l'océan
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% ZoneEtude), 
+     col=NA, 
+     border=NA, 
+     bg = "lightblue1") 
+
+# Ajout des pays européens limitrophes 
+plot(L93_EUR_2018,
+     add=TRUE, 
+     col="grey95", 
+     border= NA,
+     lwd = 0.15)
+
+# Le contours des départements
+plot(L93_DEP_2018, 
+     add=TRUE, 
+     col="#F1EEE8", 
+     border="#8A5543",
+     lwd = 0.15)
+
+# Le contours des communes
+plot(SPDF_exemple, # <- Mettez à jour le dataframe, celui qui contient le fond de carte et les Données
+     col="#f5f5f3ff", 
+     border="#a9b3b4ff",  
+     lwd = 0.15,
+     add=TRUE
+     )  
+
+
+###########################
+# On rajoute ChoroLayer()
+###########################
+
+n_class <- 5 # <-- mettez dans la variable n_class le nombre de classe souhaité
+
+choroLayer(spdf = SPDF_exemple, # <-- Mettez à jour Le dataframe géographique
+          var = "P2017T1_TX_ABST", # <-- Mettez à jour la variable à cartographier
+          method = "fisher-jenks", # la méthode de discrétisation : "sd", "equal", "quantile", "fisher-jenks","q6"
+          nclass = n_class, 
+          col = brewer.pal(n_class, "YlOrBr"), #la palette de couleur. D'autres sont disponibles ici http://neocarto.hypotheses.org/files/2015/03/brewer.png 
+          border = "grey30", # la couleur de bordure des polygones
+          lwd = 0.5, # et leur épaisseur
+          legend.pos = "right", # <-- Mettez à jour à jour la position de la légende : "topleft","top","topright","right","bottomright","bottom","bottomleft","left"
+          legend.title.txt = "Votre titre de légende", # <-- Mettez à jour
+          legend.frame = FALSE, #Un contours sur la légende à TRUE / FALSE
+          legend.border = "black", # la couleur du contours
+          legend.horiz = FALSE, #légende horizontale ou verticale
+          add = TRUE)
+
+
+# Le contours de votre zone d'étude
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% ZoneEtude), 
+     add=TRUE, 
+     col=NA, 
+     border="#8A5543"
+     ) 
+
+###########################
+# On rajoute layoutLayer()
+###########################
+
+layoutLayer(title = "Le titre de votre carte", 
+            sources = "Sources: Ministère de l'intérieur 2017, IGN 2019",
+            author = "Votre nom", 
+            frame = TRUE, # Un contours sur la carte, TRUE ou FALSE
+            north = FALSE, # On n'affiche pas le nord 
+            col = "#cdd2d4", # La couleur de fond derriére le titre
+            coltitle = "#8A5543",# La couleur de la police du texte
+            scale = 25 # La taille de l'échelle, en km
+            )  
+
+rm(opar)
+```
+
+*****************
+# 6. Analyse bivariée
+*****************
+
+## 6.1 Nuage de point
+
+Lorsque l'on réalise une analyse bivariée sur des Données quantitatives, on crée  toujours un nuage de points des variables X et Y. On utilise pour cela ggplot
+```{r 6.1.Nuage_Points}
+# Comme on travaille sur un spatial polygon dataframe, il faut préciser à ggplot que les Données sont dans @data. On regarde ici la relation entre l'abstention et la part d'ouvriers en Alsace.
+
+ggplot(data = SPDF_exemple@data, aes(x=CSP_OUV_15, y=P2017T2_TX_ABST)) + # <-  Mettez à jour les Données, la colonne des x et des y
+  geom_point()+
+  theme(aspect.ratio=1)+
+  xlab("Part d'ouvriers en 2015")+ # Le libellé des x
+  ylab("Taux d'abstention en 2015")+ # Le libellé des y
+  ggtitle("Titre principal") # le titre principal
+
+```
+
+
+## 6.2 corrélation de Bravais Pearson
+
+Le bloc de code suivant permet de créer la matrice de corrélation de Bravais Pearson de toutes vos variables. Le second résultat qui s'affiche correspond aux p-values
+```{r 6.2.correlation_BP}
+df <- SPDF_exemple@data # <- SPDF_exemple@data est le dataframe qui contient vos Données. C'est le seul élément à modifier ici
+
+############################ NE PAS MODIFIER !! ############################ 
+df <- df[, !sapply(df, is.character)]
+df <- df %>% na.omit()
+df <- df[!is.infinite(rowSums(df)),]
+
+rcorr(x = as.matrix(df),
+      type = "pearson") # le coefficient de corrélation de Bravais-Pearson
+################# Fin de l'interdiction de modification ################# 
+```
+
+## 6.3 corrélation de Spearman
+
+On peut faire la même chose, mais avec le coeficient de corrélation de Spearman
+```{r 6.2.correlation_BP}
+df <- SPDF_exemple@data # <- SPDF_exemple@data est le dataframe qui contient vos Données. C'est le seul élément à modifier ici
+
+############################ NE PAS MODIFIER !! ############################ 
+df <- df[, !sapply(df, is.character)]
+df <- df %>% na.omit()
+df <- df[!is.infinite(rowSums(df)),]
+
+rcorr(x = as.matrix(df),
+      type = "spearman") # le coefficient de corrélation de spearman
+
+rm(df)
+################# Fin de l'interdiction de modification ################# 
+```
+
+## 6.4 diagramme de corrélations
+On peut aussi représenter graphiquement les matrices de corrélations de Bravais Pearson. Les cases avec une croix sont les corrélations non significatives (é 5%).
+
+```{r 6.4.corrplot}
+
+df <- SPDF_exemple@data # <- SPDF_exemple@data est le dataframe qui contient vos Données. C'est le seul élément à modifier ici
+
+############################ NE PAS MODIFIER !! ############################ 
+df <- df[, !sapply(df, is.character)]
+df <- df %>% na.omit()
+df <- df[!is.infinite(rowSums(df)),]
+mcor <- cor(df)
+sign <- cor.mtest(df, conf.level = .95) # la fonction R cor.mtest() est utilisé pour calculer la significativité d'une corrélation. 
+corrplot(corr = mcor, # la matrice précédemment calculé
+         p.mat = sign$p, # les p-value calculées avec cor.mtest()
+         sig.level = .05, # le seuil de significativité retenu (5% ici)
+         type = "upper", 
+         col = rev(brewer.pal(n = 8, name = "RdYlBu"))
+         )
+rm(mcor,df)
+################# Fin de l'interdiction de modification ################# 
+```
+
+
+## 6.5 régression linéaire
+
+Pour simplifier le calcul des régressions linéaires, une fonction a été créée. Vous ne devez pas la modifier, simplement la charger. Elle sera appelée dans le bloc de code suivant.
+```{r 6.5.fonction}
+
+############################ NE PAS MODIFIER !! ############################ 
+ALLlm <- function (Dataframe,CODGEO,VariableX,VariableY,VosResidus) {
+
+  # Création d'un nouveau dataframe
+  df <- data.frame(CODGEO,VariableX,VariableY)
+  
+  # nuage de points avec la droite de régression à l'aide de geom_smooth(). 
+  gg1 <- ggplot(Dataframe, aes(x=VariableX, y=VariableY)) + geom_point() + geom_smooth(method = "lm",se = FALSE) +
+    ggtitle(paste("Droite de régression"))
+  
+  ## Le modèle linéaire : on stocke dans une variable modele le contenu de la fonction lm().
+  modele <- lm(VariableY ~ VariableX,data = Dataframe) 
+  
+  # la fonction summary() fournit plusieurs informations sur le modèle 
+  sum1 <- summary(modele)
+  
+  # le dataframe avec les résidus. D'abord on crée un dataframe avec les variables dépendantes et indépendantes de votre étude, ainsi que le code des communes (pour la cartographie des résidus).
+  df.residus <- df %>% dplyr::select(CODGEO,VariableX,VariableY)
+  
+  # On en profite pour ajouter une colonne ID qui contient les numéros des lignes. Elle servira aux jointures suivantes.
+  df.residus$ID <- rownames(df)
+  
+  # On fait une jointure avec merge() entre le dataframe précédent et les valeurs calculées du modèle. On précise que ces Données seront au format dataframe grâce à as.data.frame(). Enfin, la jointure se fait sur la colonne ID précédemment créé et sur les noms des lignes pour modele$fitted.values, ce qui s'écrit by.y = 0 
+  
+  df.residus <- merge(x=df.residus,y=as.data.frame(modele$fitted.values),by.x = "ID",by.y=  0)
+  
+  # On renomme la colonne modele$fitted.values qui vient d'être créée, pour la rendre plus compréhensible. Pour cela on utilise une fonction de dplyr : rename()
+  
+  df.residus <- dplyr::rename(.data = df.residus,Ycalcules = `modele$fitted.values`)
+  
+  # On refait la même chose pour avoir les résidus dans notre dataframe.
+  df.residus <- merge(x=df.residus,y=as.data.frame(modele$residuals),by.x = "ID",by.y=  0)
+  
+  # On renomme également la colonne modele$residuals qui vient d'être créée.
+  df.residus <- dplyr::rename(.data = df.residus,Residus = `modele$residuals`)
+  
+  # Vérification de la normalité. On crée un object ggplot() avec en x les résidus. 
+  gg2 <- ggplot(df.residus, aes(x = Residus)) + geom_histogram(aes(y =..density..),colour = "black",fill = "white")+
+    xlim(c(-max(df.residus$Residus),max(df.residus$Residus)))+
+    stat_function(fun = dnorm,args = list(mean = mean(df.residus$Residus), sd = sd(df.residus$Residus)),color = "red" )+
+    ggtitle(paste("Normalité des résidus"))
+  
+  # Vérification des autres conditions. On crée un objet ggplot() avec en x les résidus, en y les identifiants des lignes.
+  gg3 <- ggplot(df.residus, aes(y=Residus,x=ID, fill = Residus)) +geom_point(shape=21, size =4)+  geom_hline(yintercept = 0)+ 
+    theme(axis.title.x=element_blank(),axis.text.x=element_blank(),axis.ticks.x=element_blank())+
+    scale_x_discrete(breaks = NULL)+
+    scale_fill_gradient2(low="darkgreen", mid="white", high="darkred")+
+    ggtitle(paste("Répartition des résidus"))
+
+  NomDFResidus <- as.character(VosResidus)
+  df.residus <- dplyr::select(df.residus, -c(ID)) 
+
+  assign(NomDFResidus, df.residus, envir=.GlobalEnv)
+  
+return (list(gg1,sum1,gg2,gg3))
+
+  }
+################## Fin de l'interdiction de modification ################## 
+```
+
+ Une fois la fonction chargée, on peut l'appeler afin d'afficher les résultats
+```{r}
+
+#On décide de faire une régression en expliquant l'abstention par la part d'ouvriers
+
+ALLlm(Dataframe = SPDF_exemple@data , # remplacez SPDF_exemple par vos Données qui contiennent les variables x,y et les codes communes
+      CODGEO= SPDF_exemple@data$INSEE_COM, # IDEM, en précisant bien la colonne qui contient les codes communes
+      VariableX = SPDF_exemple@data$CSP_OUV_15, # IDEM, en précisant cette fois la colonne qui contient les x
+      VariableY = SPDF_exemple@data$P2017T2_TX_ABST, # IDEM, en précisant cette fois la colonne qui contient les y
+      VosResidus = "df.residus_ABST_OUV" ) # le dataframe qui contiendra les résidus. Il sera chargé dans R. Pensez à le nommer de manière "logique". Ici, on précise que c'est le dataframe des résidus de l'abstention en fonction du taux de chômage.
+
+```
+
+Vous pouvez ensuite réutiliser la fonction ALLlm() pour testez d'autres modèle. Par exemple taux d'abstention par la part des retraités
+```{r}
+
+ALLlm(Dataframe = SPDF_exemple@data , 
+      CODGEO= SPDF_exemple@data$INSEE_COM, 
+      VariableX = SPDF_exemple@data$CSP_RET_15, 
+      VariableY = SPDF_exemple@data$P2017T2_TX_ABST, 
+      VosResidus = "df.residus_ABST_RET" ) # On pense à changer le nom du dataframe en sortie
+
+```
+
+## 6.6 Carte des résidus
+La cartographie des résidus permet de visualiser les individus géographiques (les communes dans votre cas) où le modèle linéaire est proche de la réalité (Résidus faibles) et inversement. 
+
+Le principe reste le même que pour cartographier un indicateur comme le taux d'abstention. Néanmoins il existe des subtilités dans la discrétisation qui sont traitées dans les blocs de code suivants.
+
+Tout d'abord, on fait une jointure entre la couche des communes (L93_COM_2018) et le dataframe qui contient les résidus. Ce dernier est créé grâce à la fonction ALLlm() précédente.
+```{r 6.6.1.Jointure_residus}
+# On réutilise le code du bloc 2.1 Jointure :
+
+# Pour plus de simplicité, on nomme souvent les spatial dataframe spdf (contre df pour les dataframes)
+spdf_residus_ABST_CHOM <- dplyr::inner_join(x=L93_COM_2018, # le spdf des communes
+                                  y=df.residus_ABST_OUV, # le df des résidus
+                                  by = c("INSEE_COM"="CODGEO"))
+
+
+```
+
+
+Il ne reste plus qu'à créer la carte. Les éléments que vous devez mettre obligatoirement à jour sont notés : # <-- Mettez à jour ...
+```{r 6.6.2.Choro_residus}
+
+ZoneEtude <- c("67","68") # <--  Mettez à jour les codes départements de votre zone d'étude. La variable ZoneEtude sera appelée plusieurs fois dans le code suivant et vous n'aurez pas à modifier votre sélection à chaque fois
+
+# Les marges de la carte. N'y touchez pas
+opar <- par(mar = c(0,0,1.2,0))
+
+# L'emprise de votre zone d'étude et la couleur de l'océan
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% ZoneEtude), # <-- Mettez à jour les codes départements
+     col=NA, 
+     border=NA, 
+     bg = "lightblue1") 
+
+# Ajout des pays européens limitrophes 
+plot(L93_EUR_2018,
+     add=TRUE, 
+     col="grey95", 
+     border= NA,
+     lwd = 0.15)
+
+# Le contours des départements
+plot(L93_DEP_2018, 
+     add=TRUE, 
+     col="#F1EEE8", 
+     border="#8A5543",
+     lwd = 0.15)
+
+# Le contours des communes
+plot(spdf_residus_ABST_CHOM, # <-- Mettez à jour le spatial polygon dataframe, celui qui contient le fond de carte et les Données
+     col="#f5f5f3ff", 
+     border="#a9b3b4ff",  
+     lwd = 0.15,
+     add=TRUE
+     )  
+
+###########################
+# On rajoute ChoroLayer()
+###########################
+
+var <- spdf_residus_ABST_CHOM@data$Residus  # <-- Mettez à jour le spdf, celui qui contient le fond de carte et les Données. Laissez néanmoins la partie @data$Residus. Par exemple : spdf_residus_Ma_Super_Relation@data$Residus
+
+# La méthode de discrétisation. Ne pas modifier
+## On discrétise en moyenne écart type pour les résidus. On fait en sorte que la moyenne soit centre de classe.
+## On stocke dans des variables les paramètres univariées pour simplifier la lecture du code
+var_moy <- mean(var)
+var_sd <- sd(var)
+var_moy_p05 <- var_moy + var_sd*0.5
+var_moy_m05 <- var_moy -var_sd*0.5
+var_moy_p15 <- var_moy + var_sd*1.5
+var_moy_m15 <- var_moy -var_sd*1.5
+var_min <-min (var)
+var_max <- max(var)
+
+# On stocke les bornes de classes dans breaks
+breaks <- c(var_min,var_moy_m15,var_moy_m05,var_moy_p05,var_moy_p15,var_max)
+
+# On enlève les variables précédentes qui ne servent plus.
+rm(var_moy,var_sd,var_moy_p05,var_moy_m05,var_moy_p15,var_moy_m15,var_min,var_max)
+
+# La palette des couleurs. Ne pas modifier
+palette <- carto.pal(pal1="green.pal", n1 = 2, pal2 = "pink.pal", n2 = 2, middle = TRUE,
+          transparency = FALSE)
+
+choroLayer(spdf = spdf_residus_ABST_CHOM,  # <-- Mettez à jour le dataframe
+          var = "Residus",
+          breaks= breaks,
+          col = palette,
+          border = "grey70",
+          lwd = 0.5, 
+          legend.pos = "right", # <-- Mettez à jour la position de la légende : "topleft", "top", "topright", "right", "bottomright", "bottom", "bottomleft", "left"
+          legend.title.txt = "Votre titre de légende", # <-- Mettez à jour le titre de légende,
+          legend.frame = FALSE, 
+          legend.border = "black", 
+          legend.horiz = FALSE, 
+          add = TRUE)
+
+
+# Le contours de votre zone d'étude
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% ZoneEtude), 
+     add=TRUE, 
+     col=NA, 
+     border="#8A5543"
+     ) 
+
+###########################
+# On rajoute layoutLayer()
+###########################
+
+layoutLayer(title = "Le titre de votre carte", 
+            sources = "Sources: Ministère de l'intérieur 2017, IGN 2019",
+            author = "Votre nom", 
+            frame = TRUE, 
+            north = FALSE, 
+            col = "#cdd2d4", 
+            coltitle = "#8A5543",
+            scale = 25 # La taille de l'échelle, en km
+            )   
+
+rm(opar)
+```
+
+
+
+***********************
+#7. régression multiple 
+***********************
+
+Comme pour la régression linéaire, une fonction a été créée pour vous simplifier les calculs et les validations de la régression linéaire. Il faut la charger au moins une fois avant de l'appeler dans votre code. Elle ne doit pas être modifiée.
+
+## 7.1 Créer une régression multiple
+```{r 7.1.ALLlm_multiple}
+
+############################ NE PAS MODIFIER !! ############################ 
+ALLlm_multiple <- function (Dataframe,CODGEO,Variables_X,Variable_Y,Nom_DF_Residus) {
+  
+  # On stocke dans une variable modele le contenu de la fonction lm().
+  modele <- lm( paste(Variable_Y," ~ ",paste(Variables_X, collapse="+"),sep = ""),data = Dataframe) 
+  
+  # la fonction summary() fournit plusieurs informations sur le modèle 
+  sum1 <- summary(modele)
+  
+  ## le dataframe avec les résidus
+  df.residus <- data.frame(CODGEO,modele$model)
+  
+  # On en profite pour ajouter une colonne ID qui contient les numéros des lignes. Elle servira aux jointures suivantes.
+  df.residus$ID <- rownames(df.residus)
+  
+  # On fait une jointure avec merge() entre le dataframe précédent et les valeurs calculées du modèle.
+  df.residus <- merge(x=df.residus, y=as.data.frame(modele$fitted.values),by.x = "ID",by.y=  0)
+  
+  #On renomme la colonne modele$fitted.values qui vient d'être créée
+  df.residus <- dplyr::rename(.data = df.residus, Ycalcules = `modele$fitted.values`)
+  
+  # On refait la même chose pour avoir les résidus dans notre dataframe. 
+  df.residus <- merge(x=df.residus,y=as.data.frame(modele$residuals),by.x = "ID",by.y=  0)
+  
+  #On renomme également la colonne modele$residuals qui vient d'être créée.
+  df.residus <- dplyr::rename(.data = df.residus,Residus = `modele$residuals`)
+  
+  # Vérification de la normalité
+  gg2 <- ggplot(df.residus, aes(x = Residus)) + geom_histogram(aes(y =..density..),colour = "black", fill = "white")+
+    xlim(c(-max(df.residus$Residus),max(df.residus$Residus)))+
+    stat_function(fun = dnorm,args = list(mean = mean(df.residus$Residus), sd = sd(df.residus$Residus)),color = "red" )+
+    ggtitle(paste("Normalité des résidus"))
+  
+  # On crée un objet ggplot() avec en x les résidus, en y les identifiants des lignes. 
+  gg3 <- ggplot(df.residus, aes(y=Residus,x=ID, fill = Residus)) +
+    geom_point(shape=21, size =4)+ 
+    geom_hline(yintercept = 0)+ 
+    theme(axis.text.x=element_text(angle=90, hjust=1))+  
+    scale_fill_gradient2(low="darkgreen", mid="white", high="darkred")+
+    theme(axis.title.x=element_blank(),axis.text.x=element_blank(),axis.ticks.x=element_blank())+
+    ggtitle(paste("Répartition des résidus"))
+  
+  # ajout du dataframe des résidus comme variable globale
+  NomDFResidus <- as.character(Nom_DF_Residus)
+  df.residus <- dplyr::select(df.residus, -c(ID)) 
+  # Ajout sous forme de spdf
+  df.residus <-  merge(x=SPDF_exemple,y=df.residus,by="row.names")
+  
+  assign(NomDFResidus, df.residus, envir=.GlobalEnv)
+  
+  # VIF
+  VIF <- paste("VIF max. du modèle :", round(max(vif(modele)),1))
+  
+return (list(sum1,VIF,gg2,gg3))
+}
+################# Fin de l'interdiction de modification ################# 
+
+```
+
+Vous pouvez appeler la fonction de cette manière :
+
+```{r 7.1.2.model1}
+ALLlm_multiple(Dataframe = SPDF_exemple@data, # <- mettez juste à jour le nom du spatial dataframe si besoin
+      CODGEO = SPDF_exemple@data$INSEE_COM, # la colonne du dataframe qui contient les codes communes
+      Variables_X = c("CSP_AGR_15","CSP_OUV_15","CSP_EMP_15","CSP_CAD_15"), # La liste des variables explicatives du modèle à tester
+      Variable_Y = "P2017T1_TX_ABST", # La variable a expliquer
+      Nom_DF_Residus = "SPDF.residus_model1") # Le nom du Spatialdataframe qui contiendra les résidus.
+```
+Trois fenêtres s'ouvrent : 
+
+*La première contient les résultats du summary de votre modèle, c'est à dire le r2 ajusté, sa p-value, et les caractéristiques de chaque variable du modèle. En dessous, vous trouverez également la VIF max de votre modèle. 
+
+*La seconde fenêtre permet de valider la normalité des résidus. La courbe rouge correspond à la distribution des résidus s'ils suivaient une loi normale. Les barres des histogrammes correspondent aux résidus. 
+
+*La troisième fenêtre permet de vérifier l'homoscédasticité des résidus, c'est à dire qu'ils se répartissent parallèlement par rapport à l'axe des valeurs observées - valeurs calculées = 0.  De plus, on en profite pour vérifier l'absence d'autocorrélation statistiques des résidus, c'est à dire que les résidus forment une courbe concave ou convexe. Plus rare en régression multiple qu'en régression linéaire, elle traduit souvent une relation non linéaire entre x et y.
+
+Enfin, un spatial dataframe, SPDF.residus_model1, est créé. Il contient la couche des communes avec les données des résidus. Vous pouvez donc directement le cartographier.
+
+## 7.2 Sélection de plusieurs modèles
+
+Ajouter toutes les variables disponibles dans une régression linéaire risque de rendre ce dernier "instable" et très difficile à expliquer. Pour nous aider, il existe des outils nous guidant dans le choix des variables du modèle. L'une d'elle est la stepwise procédure. Elle se base sur l'AIC (cf. cours). Plus il est petit, meilleurs est le modèle par rapport aux autres.
+
+Le bloc de code ci-dessous reprend la méthode semi-automatique avec stepwise
+```{r 7.2.stewpwise}
+
+# On crée en premier modèle null,
+model.null = lm(P2017T1_TX_ABST ~ 1,  # <- mettez à jour le nom de la variable à expliquer
+                data=SPDF_exemple@data) # <- mettez à jour le nom du spatial dataframe si besoin
+
+# Et un second, avec toutes les variables explicatives qui nous intéressent. De nouveau, mettez à jour le nom de la variable à expliquer et ajoutez les variables explicatives qui vous intéressent. N'ajoutez pas non plus 50 variables. Vous aurez du mal à l'analyser et le calcul pourra être très long.
+
+model.full = lm(P2017T1_TX_ABST ~ CSP_AGR_15+CSP_OUV_15+CSP_EMP_15+CSP_CAD_15+CSP_PI_15+CSP_RET_15,+CSP_AUT_15,
+                data=SPDF_exemple@data) # <- mettez à jour le nom du spatial dataframe si besoin
+
+# Enfin on lance la fonction step(), avec comme point de départ le model.null et comme point d'arrivée le modèle complet (model.full).
+step(model.null,
+     scope = list(upper=model.full),
+             direction="both",
+             data=SPDF_analyse@data)  # <- mettez juste à jour le nom du spatial dataframe si besoin
+
+```
+
+Regardez le ou les modèles avec l'AIC le plus faible. Vous pouvez ensuite les tester grâce à la fonction ALLlm_multiple  : 
+*r² ajusté et signe des coefficients des variables
+*leurs significativités
+*VIF max du modèle
+*validation des résidus
+
+
+```{r 7.1.3.model_stepwise}
+ALLlm_multiple(Dataframe = SPDF_exemple@data, # <- mettez juste à jour le nom du spatial dataframe si besoin
+      CODGEO = SPDF_exemple@data$INSEE_COM, # la colonne du dataframe qui contient les codes communes
+      Variables_X = c("CSP_PI_15","CSP_AGR_15","CSP_CAD_15","CSP_OUV_15","CSP_EMP_15","CSP_RET_15"), # La liste des variables explicatives du modèle à tester
+      Variable_Y = "P2017T1_TX_ABST", # La variable a expliquer
+      Nom_DF_Residus = "SPDF.residus_model_stepwise") # Le nom du spatial dataframe qui contiendra les résidus.
+```
+Le modèle n'est pas très bon, avec seulement un r² ajusté de 0.13. Néanmoins il est significatif, tout comme les coefficients des variables (t-value). Les signes semblent néanmoins étranges, tous négatifs. La VIF max est inférieure à 7 et on ne détecte par de problème sur les résidus (normalité, homoscédasticité, pas d'autocorrélation statistique). Mais avec un si faible r², difficile de justifier que le modèle soit pertinent...
+
+Pour les besoins de l'exemple, on l'utilisera quand même pour la cartographie des résidus.
+
+## 7.3 Cartographie des résidus
+
+Ue fois votre modèle validé, vous pouvez cartographier ses résidus. 
+```{r 7.3.Carto.residus}
+
+#la fonction ALLlm_multiple() permet de créer un spatial dataframe avec les données des résidus. C'est ce SPDF que l'on va cartographier, dans notre exemple SPDF.residus_model_stepwise.
+
+spdf <- SPDF.residus_model_stepwise # <-- on donne un nom générique au SPDF à cartographier. Il faudra donc mettre le nom du SPDF de sortie de la fonction ALLlm_multiple(). Ne modifiez pas la variable, spdf, seulement ce qu'il y a après (SPDF.residus_model_stepwise)
+
+ZoneEtude <- c("67","68") # <--  Mettez à jour les codes départements de votre zone d'étude. La variable ZoneEtude sera appelée plusieurs fois dans le code suivant et vous n'aurez pas à modifier votre sélection à chaque fois
+
+
+############################ NE PAS MODIFIER !! ############################ 
+# La méthode de discrétisation. Ne pas modifier
+## On discrétise en moyenne écart type pour les résidus. On fait en sorte que la moyenne soit centre de classe.
+## On stocke dans des variables les paramètres univariées pour simplifier la lecture du code
+var <- spdf@data$Residus  
+var_moy <- mean(var)
+var_sd <- sd(var)
+var_moy_p05 <- var_moy + var_sd*0.5
+var_moy_m05 <- var_moy -var_sd*0.5
+var_moy_p15 <- var_moy + var_sd*1.5
+var_moy_m15 <- var_moy -var_sd*1.5
+var_min <-min (var)
+var_max <- max(var)
+# On stocke les bornes de classes dans breaks Ne pas modifier
+breaks <- c(var_min,var_moy_m15,var_moy_m05,var_moy_p05,var_moy_p15,var_max)
+# On enlève les variables précédentes qui ne servent plus. Ne pas modifier
+rm(var_moy,var_sd,var_moy_p05,var_moy_m05,var_moy_p15,var_moy_m15,var_min,var_max)
+# La palette des couleurs. Ne pas modifier
+palette <- carto.pal(pal1="green.pal", n1 = 2, pal2 = "pink.pal", n2 = 2, middle = TRUE,transparency = FALSE)
+################# Fin de l'interdiction de modification ################# 
+
+
+#####################################
+# Les contours et limites de la carte
+#####################################
+
+# Les marges de la carte. N'y touchez pas
+opar <- par(mar = c(0,0,1.2,0))
+
+# L'emprise de votre zone d'étude et la couleur de l'océan
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% ZoneEtude), 
+     col=NA, 
+     border=NA, 
+     bg = "lightblue1") 
+
+# Ajout des pays européens limitrophes 
+plot(L93_EUR_2018,
+     add=TRUE, 
+     col="grey95", 
+     border= NA,
+     lwd = 0.15)
+
+# Le contours des départements
+plot(L93_DEP_2018, 
+     add=TRUE, 
+     col="#F1EEE8", 
+     border="#8A5543",
+     lwd = 0.15)
+
+# Le contours des communes
+plot(spdf, 
+     col="#f5f5f3ff", 
+     border="#a9b3b4ff",  
+     lwd = 0.15,
+     add=TRUE
+     )  
+
+
+#########################
+# On rajoute ChoroLayer()
+#########################
+
+choroLayer(spdf = spdf, 
+          var = "Residus",
+          breaks= breaks,
+          col = palette,
+          border = "grey70",
+          lwd = 0.5, 
+          legend.pos = "right", # <-- Mettez à jour la position de la légende : "topleft", "top", "topright", "right", "bottomright", "bottom", "bottomleft", "left"
+          legend.title.txt = "Résidus", 
+          legend.frame = FALSE, 
+          legend.border = "black", 
+          legend.horiz = FALSE,
+          add = TRUE
+          )
+
+# Le contours de votre zone d'étude
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% ZoneEtude), 
+     add=TRUE, 
+     col=NA, 
+     border="#8A5543"
+     ) 
+
+###########################
+# On rajoute layoutLayer()
+###########################
+
+layoutLayer(title = "Titre de la carte", 
+            sources = "Sources: Ministère de l'intérieur 2017, IGN 2019",
+            author = "Votre nom", 
+            frame = TRUE, 
+            north = FALSE, 
+            col = "#cdd2d4", 
+            coltitle = "#8A5543",
+            scale = 25 # La taille de l'échelle, en km
+            )   
+
+```
+
+
+************************************
+#8. Analyse en Composante Principale 
+************************************
+
+Cette fonction permet :
+  *de calculer une ACP
+  *de visualiser les valeurs propres
+  *de visualiser les coordonnées des variables
+  *leurs contributions
+  *leurs cosinus²
+  *de créer un spatial dataframe avec les individus, leurs coordonnées et leurs contributions
+
+*********************
+##8.1 Calcul d'une ACP 
+*********************
+
+```{r 8.1.ACPfacile}
+
+############################ NE PAS MODIFIER !! ############################ 
+ACP_Facile <- function(spdf,var,code,sortie) {
+  
+  # Le dataframe qui ne contient que les variables nécessaires à l'ACP
+  df <-dplyr::select(.data=spdf,var)
+  # l'ACP                          
+  acp <- PCA(df, graph = FALSE, scale = TRUE, ncp = 15 )
+  
+  # Graphique des valeurs propres
+  g1_VP <- fviz_eig(acp, addlabels = TRUE, ylim = c(0, 50))
+
+  # Les infos sur les variables
+  variables <- get_pca_var(acp)
+
+  # Les coordonnées des variables sur les facteurs
+  g2_VarCoord <- corrplot(variables$coord, is.corr=TRUE,method = 'color', addCoef.col = "black",
+                          title = 'Coordonnées des variables\n',mar=c(0,0,2,0),
+                          tl.col = "black", tl.srt = 90,cl.pos = "n",
+                          col = rev(brewer.pal(n = 8, name = "PiYG")))
+
+  # Les contributions des variables sur les facteurs
+  g3_VarContrib <- corrplot(variables$contrib, is.corr=FALSE,method = 'color', addCoef.col = "black",
+                          title = 'contributions des variables\n',mar=c(0,0,2,0),
+                          tl.col = "black", tl.srt = 90,cl.pos = "n",
+                          col = (brewer.pal(n = 5, name = "Reds")))
+
+  # Qualité de représentation des variables sur les facteurs
+  g4_cos2 <- corrplot(variables$cos2, is.corr=FALSE,method = 'color', addCoef.col = "black",
+                        title = 'Cosinus² des variables\n',mar=c(0,0,2,0),
+                        tl.col = "black", tl.srt = 90,cl.pos = "n",
+                        col = (brewer.pal(n = 5, name = "Purples")))
+
+  # Les individus
+  ind <- get_pca_ind(acp)
+  SPDF_ACP_RES <-  merge(x=spdf,y=as.data.frame(ind$coord),by="row.names")
+  #SPDF_ACP_RES <-  merge(x=SPDF_ACP_RES,y=as.data.frame(ind$contrib),by="row.names")
+  
+  sortie <- as.character(sortie)
+  assign(sortie, SPDF_ACP_RES, envir=.GlobalEnv)
+  
+  return (list(g1_VP,g2_VarCoord,g3_VarContrib,g4_cos2))
+
+  }
+
+################## Fin de l'interdiction de modification ################## 
+
+```
+
+Il suffit d'appeler la fonction pour afficher les résultats. Ne changez pas encore les arguments, contentez-vous de lancer le bloc de code pour visualiser les résultats. On recrée ici l'ACP précédente sur les CSP.
+
+```{r 8.1.2.appel.ACPFacile}
+
+ACP_Facile(spdf= SPDF_exemple, # le spatial dataframe avec vos données
+           var = c("CSP_AGR_15","CSP_ARTI_15","CSP_OUV_15","CSP_EMP_15","CSP_CAD_15","CSP_PI_15","CSP_RET_15"), # La liste des variables de votre ACP
+           code = "INSEE_COM", # Le code géographiques de spdf
+           sortie = "SPDF_ACP_ALSACE_CSP" # le nom du spdf en sortie avec les données de l'ACP
+           )
+```
+
+********************************
+## 8.2 cartographie des facteurs
+********************************
+
+La fonction ACP_Facile() a déjà créé un SPDF avec les coordonnées des individus. Il n'y a donc aucune jointure à faire.
+```{r 8.2.Carto.ACP}
+
+#Quelques éléments sont à modifier et sont précisés par le commentaire # <-- . Ne les modifiez pas pour le moment, afin que l'exemple puisse fonctionner.
+
+spdf <- SPDF_ACP_ALSACE_CSP # <-- on donne un nom générique au SPDF à cartographier. Il faudra donc mettre le nom du SPDF de sortie de la fonction ACP_Facile(). Ne modifiez pas la variable, spdf, seulement ce qu'il y a après (SPDF_ACP_ALSACE_CSP)
+
+facteur <- "Dim.1" # <-- mettez à jour le n° du facteur à cartographier. Dim.1 pour le facteur 1, Dim.3 pour le facteur 3 etc.
+
+ZoneEtude <- c("67","68") # <--  Mettez à jour les codes départements de votre zone d'étude. Ils doivent correspondre à la zone également étudiée avec votre ACP...
+
+############################ NE PAS MODIFIER !! ############################ 
+# La méthode de discrétisation. Ne pas modifier
+## On discrétise en moyenne écart type pour les résidus. On fait en sorte que la moyenne soit centre de classe.
+## On stocke dans des variables les paramètres univariées pour simplifier la lecture du code
+
+var <- eval(parse(text=paste("spdf@data$",facteur,sep="")))
+var_moy <- mean(var)
+var_sd <- sd(var)
+var_moy_p05 <- var_moy + var_sd*0.5
+var_moy_m05 <- var_moy -var_sd*0.5
+var_moy_p15 <- var_moy + var_sd*1.5
+var_moy_m15 <- var_moy -var_sd*1.5
+var_min <-min (var)
+var_max <- max(var)
+# On stocke les bornes de classes dans breaks Ne pas modifier
+breaks <- c(var_min,var_moy_m15,var_moy_m05,var_moy_p05,var_moy_p15,var_max)
+# On enlève les variables précédentes qui ne servent plus. Ne pas modifier
+rm(var_moy,var_sd,var_moy_p05,var_moy_m05,var_moy_p15,var_moy_m15,var_min,var_max)
+# La palette des couleurs. Ne pas modifier
+palette <- carto.pal(pal1="green.pal", n1 = 2, pal2 = "pink.pal", n2 = 2, middle = TRUE,transparency = FALSE)
+################# Fin de l'interdiction de modification ################# 
+
+
+#####################################
+# Les contours et limites de la carte
+#####################################
+
+# Les marges de la carte. N'y touchez pas
+opar <- par(mar = c(0,0,1.2,0))
+
+# L'emprise de votre zone d'étude et la couleur de l'océan
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% ZoneEtude), 
+     col=NA, 
+     border=NA, 
+     bg = "lightblue1") 
+
+# Ajout des pays européens limitrophes 
+plot(L93_EUR_2018,
+     add=TRUE, 
+     col="grey95", 
+     border= NA,
+     lwd = 0.15)
+
+# Le contours des départements
+plot(L93_DEP_2018, 
+     add=TRUE, 
+     col="#F1EEE8", 
+     border="#8A5543",
+     lwd = 0.15)
+
+# Le contours des communes
+plot(spdf, # <- Mettez à jour le dataframe, celui qui contient le fond de carte et les Données
+     col="#f5f5f3ff", 
+     border="#a9b3b4ff",  
+     lwd = 0.15,
+     add=TRUE
+     )  
+
+
+#########################
+# On rajoute ChoroLayer()
+#########################
+
+choroLayer(spdf = spdf, 
+          var = facteur, 
+          breaks= breaks,
+          col = palette,
+          border = "grey70",
+          lwd = 0.5, 
+          legend.pos = "n",
+          legend.title.txt = "",  # on n'ajoute pas de légende avec chorolayer pour le moment
+          legend.frame = FALSE, 
+          legend.border = "black", 
+          legend.horiz = FALSE,
+          add = TRUE
+          )
+
+# Le contours de votre zone d'étude
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% ZoneEtude), 
+     add=TRUE, 
+     col=NA, 
+     border="#8A5543"
+     ) 
+
+###########################
+# On rajoute layoutLayer()
+###########################
+
+
+layoutLayer(title = "Titre de la carte", 
+            # <- On ajoute avec les sources la petite phrase pour l'ACP. Pour faire des sauts de lignes sur la carte, on utilise \n dans le texte
+            sources = "Sources: INSEE 2017, IGN 2019. Résultats d'une ACP normée sur un tableau\ndécrivant les communes alsaciennes en 2015 en fonction des CSP",
+            author = "Votre nom", 
+            frame = TRUE, 
+            north = FALSE, 
+            col = "#cdd2d4", 
+            coltitle = "#8A5543",
+            scale = 25, # La taille de l'échelle, en km
+            posscale = "bottomright" # la position de l'échelle
+            )   
+
+
+#####################
+# La légende de l'ACP 
+#####################
+
+# On définit les éléments de la légende, dans l'ordre !!! 
+# D'abord l'interprétation des coordonnées positives, puis on laisse 3 textes de caissons vides, et enfin on précise l'interprétation des coordonnées négatives.
+interpretation_chaudes_vers_froides <- c("Forte représentation des cadres", "", "","", "Forte représentation des ouvriers et des\nemployés\n")
+
+
+# les couleurs des caissons de légende, ne pas modifier
+couleurs_chaudes_vers_froides<- c("#83026b", "#ffb7f1", "#f6f6f6", "#afd4a0","#1a7832")
+
+
+# On ajoute une légende spécifique pour l'ACP. On utilise pour cela legendTypo() du package cartography
+legendTypo(#<-- On précise le titre de la légende, avec la part de variance et le facteur cartographié
+           title.txt = "Principales différenciations entre\nles communes (coordonnées sur\nle 1er facteur, 23,8% de la variance totale)",
+           title.cex = 0.8,
+           values.cex = 0.6,
+           pos = "right", # <- La position de la légende
+           col = couleurs_chaudes_vers_froides,
+           categ = interpretation_chaudes_vers_froides, 
+           cex = 0.75,
+           nodata = FALSE,
+           frame = TRUE,
+           symbol="box")
+
+```
+
+
+*****************************************
+#9. Classification Ascendante Hiérarchique
+*****************************************
+
+En construction

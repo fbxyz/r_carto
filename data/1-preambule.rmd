@@ -1,0 +1,198 @@
+---
+title: "1 : introduction à R"
+author: "Florian Bayer"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    toc_float: true
+    code_folding: hide
+---
+***********
+# Préambule
+***********
+
+R n'est pas qu'un langage de programmation, c'est aussi un environnement permettant de manipuler des données, de faire des calculs statistiques, des graphiques et même de manipuler spatialement de l'information. L'objectif de ces exercices n'est pas de faire de vous des experts, mais de prendre simplement en main R, tout en vous inculquant des notions de programmation. Toutefois, nous ferons très peu d'algorithmie dans ce cours. C'est à dire la résolution d'un problème à l'aide d'opérations simples (arithmétiques, conditions, boucles etc.). L'algorithmie est en quelque sorte l'essence de la programmation en informatique.
+
+Vous apprendrez ainsi à importer des données, à faire des calculs simples (sommes, multiplications, calculs de moyennes etc.) ou encore à représenter graphiquement vos données.
+
+Pour l'histoire, R a été développé au milieu des années 90 (Ihaka, R. et R. Gentleman. 1996, «R: A language for data analysis and graphics», Journal of Computational and Graphical Statistics, vol. 5, no 3, p. 299–314.). Il se base sur un autre langage développé dans les années 70, S, rendu populaire par le logiciel S-PLUS. R est un logiciel libre (licence GNU), ce qui a permis à une communauté de plus en plus nombreuse d'enrichir ses fonctionnalités (par exemple en permettant de manipuler des données spatiales).
+
+Pour faciliter votre apprentissage, les exercices seront sous la forme d'un document R Markdown. Il s'agit de fichiers avec l'extension "rmd" (fichier.rmd) qui permettent de mélanger du texte (comme celui-ci) et des blocs de codes R (ci-dessous). Ce fichier rmd peut ensuite être exporté au format word, html ou encore PDF. Il facilite donc l'échange avec d'autres personnes, que ce soit pour visualiser vos résultats ou pour regarder votre code. D'autres langages de programmation comme Python peuvent même être inclus. Un guide très complet est disponible ici : https://bookdown.org/yihui/rmarkdown/. A noter que dans le bloc de texte, entourer un mot du symbole dollar permet de le mettre en italique dans le document exporté : $italique$. Les concepts importants seront mis en avant par ce moyen dans le cours.
+
+Un format de fichier plus classique est l'extension "R" (fichier.R), qui ne permet pas d'écrire du texte, mais simplement de lire votre code.
+
+************************
+# 1- Les blocs de codes
+************************
+
+Dans un document R Markdown, les $blocs$ de codes se présentent sous cette forme :
+
+3 accents graves (altgr +7), un curly bracket ouvert { , le langage à utiliser R, le nom de votre bloc (unique et non obligatoire) et un curly bracket fermé }. Des options sont aussi possibles mais ne seront pas abordés. La fin du bloc de code se fait à l'aide de 3 accents graves. Cela signifie que seul le code entre les 3 premiers accents et les 3 derniers sera lu. Le code peut être $lancé$ en cliquant sur le triange vert tout à droite, ou en appuyant sur ctrl+shift+entrée. Attention, le curseur de la souris doit être dans le bloc de code pour qu'il soit exécuté avec cette méthode.
+```{r Nom_De_Bloc_Optionnel}
+
+print("je suis un test qui va s'afficher sous le bloc de code")
+
+```
+
+*********************
+# 2- Les commentaires
+*********************
+
+Le symbole de $commentaire$ est très important. Il permet de préciser ce que vous êtes en train de faire dans votre code. Un code bien commenté est plus facilement compréhensible par une personne extérieure et même pour vous, lorsque que vous retravaillerez sur votre programme après vos vacances...
+```{r exercice_1.2}
+# Je suis un commentaire. Aucune commande ne sera exécutée si elle se trouve à droite et sur la même ligne que le symbole #
+```
+
+***********************
+# 3 -Les données dans R
+***********************
+
+R permet de charger des données sous forme de tableaux. Ce sont des $dataframes$. Il existe des jeux de données déjà préparés, très utiles pour des tests. Par exemple le jeu de données "mtcars".
+
+Nous allons afficher ces données en l'appelant par son nom (mtcars). Nous apprendrons plus tard à charger notre propre jeu de données.
+
+```{r exercice_1.3}
+# Lancez le bloc pour afficher les données du dataframe mtcars
+mtcars
+```
+
+R Markdown affiche directement le contenu du tableau dans la page. Il est aussi possible de le charger dans un nouvel élément, stocké en mémoire, que l'on appelle une $variable$ ou objets. Il en existe de plusieurs sortes et nous reviendrons sur les variables lors de l'exercice suivant.
+
+On utilise le symbole $<-$ pour $assigner$  le dataframe mtcars à la variable DF. Vous pouvez aussi utiliser le symbole =, plus courant en programmation. 
+
+Vous êtes libres de choisir le nom de vos variables, mais elles ne peuvent pas comporter d'espace et doivent être à la fois simples et parlantes en fonction de leur nature.
+
+Lancez le bloc de code ci-dessous pour assigner à la nouvelle variable DF le contenu de la variable mtcars
+```{r exercice_1.4}
+# Attention, R est sensible aux majuscules. df et DF sont donc deux variables différentes.
+DF <- mtcars
+```
+
+Rien ne s'affiche... Regardez en haut à droite, onglet Environnement,Data. Vous devriez voir une ligne avec DF 32 obs. of 11 variables. Cliquez sur DF.
+
+R Studio permet ainsi de visualiser directement votre dataframe dans un onglet, plutôt que dans la console ou dans R Markdown.
+
+*******************
+# 4 -Calculs avec R
+*******************
+
+Nous allons maintenant utiliser une $fonction$ déjà prête à l'emploi pour calculer des statistiques simples sur notre jeux de données. Pour cela nous utiliserons la fonction $summary()$. 
+
+Une fonction possède le plus souvent un ou plusieurs $arguments$, à renseigner entre les parenthèses. C'est un peu le même principe que sur Excel. En plaçant le curseur dans la parenthèse et en appuyant sur ctrl+espace, une aide vous indique ce qu'attend la fonction comme argument pour se lancer.
+
+Lancez le bloc de code ci-dessous. Comme rien n'est renseigné dans la fonction summary, un message d'erreur s'affiche
+```{r exercice_1.5, eval = FALSE}
+summary()
+```
+
+En programmation, internet est votre meilleur ami. Si le message d'erreur ne vous aide pas, allez sur un moteur de recherche et tapez "summary r". Vous devriez trouver plusieurs informations sur la fonction summary().Vous pouvez aussi afficher l'aide en tapant dans la console en bas : ?summary
+
+Placez le curseur entre les parenthèses et appuyez sur ctrl+espace pour voir le ou les arguments à renseigner.
+```{r exercice_1.5, eval = FALSE}
+summary()
+```
+
+Il semblerait qu'un argument object soit attendu. Essayez d'afficher le résultat de la fonction summary dans le bloc ci-dessous. 
+```{r exercice_1.6}
+summary()
+```
+
+
+Essayez maintenant de stocker ci-dessous ce résultat dans une nouvelle variable que nous appelerons DF.summary.
+```{r exercice_1.7}
+
+
+```
+
+Il semblerait que la variable DF.summary ne soit pas un dataframe mais une Values. En effet, vous ne parvenez pas à ouvrir la variable DF.summary dans un nouvel onglet, comme précédemment pour mtcars. 
+
+Cela s'explique par le fait que la fonction summary ne $retourne$ pas comme résultat un dataframe. 
+
+Aidez-vous d'internet pour trouver une fonction qui permettra de mettre le résultats de la fonction summary() dans un dataframe. 
+```{r exercice_1.8}
+
+
+```
+
+**************
+# 5-Graphiques
+**************
+
+R permet également de faire des graphiques. Par défaut très sobres, ils peuvent être grandement améliorés à l'aide de fonction plus évoluées et développées par la communauté.
+
+Un graphique s'affiche à l'aide de la fonction barplot. On affiche la données à représenter en tapant DF$nom_de_la_colonne. Lancez le code ci-dessous.
+```{r exercice_1.9}
+barplot(height= DF$hp) # la hauteur des barres correspond aux CV des voitures.  
+```
+
+Notre graphique est relativement simple, sans information sur le type de voiture. Nous allons l'améliorer en ajoutant dans un premier temps un argument names.arg qui permet d'afficher le nom des colonnes. Comme le nom des voitures n'est pas disponible directement dans le dataframe mais dans le libellé des lignes, on fait appelle à la fonction rownames().
+
+```{r exercice_1.10}
+#Remarquez les virgules après les arguments, sauf après le dernier. La virgule permet de séparer les arguments entre eux. On peut faire des sauts de lignes pour plus de lisibilité.
+
+barplot(height= DF$hp,
+        names.arg = rownames(DF) # on souhaite afficher le nom des voitures sur la graphique. On fait appel à la fonction rownames
+        )
+```
+
+Le rendu est un peu meilleur, mais par manque de place tous les noms ne s'affichent pas. On utilise un autre argument, las = 2, pour afficher les noms verticalement.
+```{r exercice_1.11}
+
+barplot(height= DF$hp,
+        names.arg = rownames(DF),
+        las=2# on utilise l"argument las = 2 pour afficher les noms à la verticale
+        )
+```
+
+Pour réduire un peu la taille des libellés, on applique l'argument cex.names suivant :
+```{r exercice_1.12}
+
+barplot(height= DF$hp,
+        names.arg = rownames(DF),
+        las=2,
+        cex.names=0.50# on diminue de moitié la taille des libellés ( x 0.5)
+        )
+```
+
+On peut aussi ajouter un titre
+```{r exercice_1.13}
+
+barplot(height= DF$hp,
+        names.arg = rownames(DF),
+        las=2,
+        cex.names=0.50,
+        main = "exemple de titre"
+        )
+```
+
+Essayez maintenant d'ajouter un titre pour l'axe des X et pour l'axe des Y. 
+```{r exercice_1.14}
+
+barplot(height= DF$hp,
+        names.arg = rownames(DF),
+        las=2,
+        cex.names=0.50,
+        main = "exemple de titre"
+        )
+```
+La liste des arguments est disponible ici : https://www.rdocumentation.org/packages/graphics/versions/3.5.2/topics/barplot
+ou en tapant ?barplot dans un bloc de text ou la console. Toutefois, nous n'utiliserons pas le fonction plot pour ce cours, mais d'autres outils plus performants.
+
+*********************
+# Rendu de R Markdown
+*********************
+
+Pour finir, nous allons produire un document final qui contiendra :
+* les textes du R Markdown
+* les blocs de codes
+* les résultats des blocs de codes
+
+Cette étape (on parle de knit) n'est pas obligatoire, mais vous permet de mesurer la puissance de cet outil.
+
+Ce document est configuré pour produire un fichier html, mais vous pouvez aussi produire un document word ou un PDF. Pour lancer le knit, appuyez sur le bouton $Knit$ en haut de la page. Sinon appuyez sur CTRL+SHIFT+K.
+
+Si Rstudio ne détecte pas d'erreur, vous devriez obtenir un document HTML.
+
+Pensez à sauvegarder votre document rmd...

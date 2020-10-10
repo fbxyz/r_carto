@@ -1,0 +1,877 @@
+---
+title: "9-Regression_Multiple"
+author: "Florian Bayer"
+date: "19 mars 2019"
+output: html_document
+---
+
+*************************
+# Objectifs de l'exercice
+*************************
+
+Nous avons précédemment abordé la modélisation d'un phénomène quantitatif Y par une variable quantitative X à l'aide de la régression linéaire. Ce nouvel exercice vise à créer une régression multiple, c'est à dire expliquer une variable quantitative Y par plusieurs variables X.
+
+Nous verrons comment choisir un modèle adéquat, sans trop de redondance (multicolinéarité), puis nous cartographierons les résidus du nouveau modèle. Nous verrons ainsi s'il y a une amélioration par rapport à le modèle plus "simple" que vous avez réalisé lors du TD sur la régression linéaire.
+
+La première partie de ce TD est constituée d'exemples. Vous n'aurez pas à modifier le code. Le modèle utilisé tente d'expliquer le vote Le Pen aux élections 2017 en fonction des catégories socio-professionnelles dans les communes du Val-de-Marne.
+
+Dans une seconde partie, vous créerez votre propre régression multiple avec vos données.
+
+**********************************************
+# 1-Installation et/ou chargement des packages
+**********************************************
+
+Nous utiliserons la plupart des packages utilisés dans les exercices précédents, ainsi qu'un complément à ggplot : gridExtra. Ce dernier permet de combiner plusieurs graphiques en un. Enfin, on installe un package très populaire en machine learning, ‘car’, qui va permettre de valider facilement les modèles.
+```{r setup, include=FALSE}
+
+requiredPackages = c('dplyr','spdplyr','cartography', 'RColorBrewer', 'ggplot2', 'gridExtra', 'car','Hmisc')
+
+for(p in requiredPackages){
+  if(!require(p,character.only = TRUE)) install.packages(p)
+  library(p,character.only = TRUE)
+}
+
+rm(requiredPackages)
+
+```
+
+
+**********************************************
+# 2-Chargement des données
+**********************************************
+
+Puis nous chargeons les données présidentielles et géographiques. Un nouveau dataframe, CSP2015, a été ajouté. Il contient la part des différentes CSP dans chaque commune de France métropolitaine en 2015.
+```{r 2.1.import}
+
+load(unzip("presid2002_2017.zip", files="presid2002_2017.RData"))
+load(unzip("L93_GEO_2018.zip", files="L93_GEO_2018.RData"))
+
+
+# On n'utilise pas les dataframes des présidentielles 2002 à 2012. On applique alors la fonction rm() pour les retirer de l'espace de travail
+rm(presid2002,presid2007,presid2012)
+```
+
+Comme déjà abordé dans les exercices précédents et le guide R, on fait les jointures entre le fond des communes et les autres dataframes.
+```{r 2.2.data}
+
+# Les communes et les résultats des présidentielles 2017 ajouté dans un spatial dataframe SPDF_exemple
+SPDF_exemple <- dplyr::inner_join(x=L93_COM_2018, 
+                                  y=presid2017,
+                                  by = c("INSEE_COM"="CODGEO"))
+
+# On y ajoute les CSP
+SPDF_exemple <- dplyr::inner_join(x=SPDF_exemple, 
+                                  y=CSP2015,
+                                  by = c("INSEE_COM"="INSEE_CODE"))
+
+# On calcule le % de vote Le Pen au premier tours des élections
+SPDF_exemple <- dplyr::mutate(.data=SPDF_exemple,
+                              P2017T1_LEPE= P2017T1_LEPE / P2017T1_EXPR * 100 )
+
+# On ne garde que les données qui nous intéressent
+SPDF_exemple <- dplyr::select(.data=SPDF_exemple,
+                              INSEE_COM,LIBGEO,INSEE_DEP,INSEE_REG,
+                              P2017T1_LEPE,
+                              CSP_AGR_15,CSP_ARTI_15,CSP_OUV_15,CSP_EMP_15,CSP_CAD_15,CSP_PI_15,CSP_RET_15)
+
+# On filtre sur le département du Val-de-Marne
+SPDF_exemple <- dplyr::filter(.data=SPDF_exemple,
+                               INSEE_DEP %in% c('94') )
+
+
+```
+
+**********************************************
+# 3-Regression multiple : exemple
+**********************************************
+
+On pose l'hypothèse que le vote Le Pen est corrélé à une plus forte part des ouvriers dans les communes du Val-de-Marne et inversement, plus la part des cadres sera élevée, plus le vote Le Pen sera faible.
+
+Dans un premier temps, on décide de regarder les corrélations entre le vote Le Pen et les CSP. Pour cela on utilise rcorr, déjà vu dans l'exercice 6 sur la corrélation.
+
+A noter que les données de SPDF_exemple (SPDF_exemple@data) sont ajoutées dans un nouveau dataframe df. Ce dernier est ensuite modifié en ne conservant que les données qui ne sont pas du texte. Puis on enlève les données manquantes et les divisions par zéro. Ces étapes permettent d'éviter des erreurs dans l'utilisation de rcorr. Cette fonction ne peut pas fonctionner si des colonnes de type character (texte) sont présentes dans le dataframe. Les modifications faites sur le dataframe df évitent ce problème.
+```{r 3.1.correlation_BP}
+df <- SPDF_exemple@data # <- SPDF_exemple@data est le dataframe qui contient vos Données. C'est le seul élément à modifier ici
+
+## Ne modifiez pas cette partie ##
+df <- df[, !sapply(df, is.character)] # On enlève les colonnes qui ne sont pas (!) des characters
+df <- df %>% na.omit() # Et on enlève les lignes avec des données manquantes
+df <- df[!is.infinite(rowSums(df)),] # ou qui ont des valeurs inf, souvent liées à une division par zéro
+
+# On lance la fonction rcorr() sur df, transformé en matrice (en effet, rcorr() est assez peu pratique à utiliser...)
+rcorr(x = as.matrix(df), 
+      type = "pearson") # le coefficient de corrélation de Bravais-Pearson
+```
+On regarde la première colonne P2017T1_LEPE et on constate que dans les communes du Val-de-Marne où la part de cadres est importante, le vote pour Le Pen est faible (-0.77, p-value <0.00001). Inversement pour la part des ouvriers et employés. Les parts des CSP retraités, professions intermédiaires, artisans et agriculteurs sont faiblement corrélées avec le vote Le Pen (|<0.21|) et non significatives à 5%.
+
+**********************
+## 3.2 Nuage de points
+**********************
+
+On regarde ensuite les nuages de points pour les 3 variables significatives plus le nuage des professions intermédiaires
+```{r 3.2.NuagesPoints}
+
+# On créé 4 graphiques ggplot, que l'on stocke dans des variables
+g_LP_CAD <- ggplot(data = SPDF_exemple@data, aes(x=CSP_CAD_15, y=P2017T1_LEPE)) +
+  geom_point()+
+  theme(aspect.ratio=1) 
+
+g_LP_OUV <- ggplot(data = SPDF_exemple@data, aes(x=CSP_OUV_15, y=P2017T1_LEPE)) +
+  geom_point()+
+  theme(aspect.ratio=1) 
+
+g_LP_EMP <- ggplot(data = SPDF_exemple@data, aes(x=CSP_EMP_15, y=P2017T1_LEPE)) +
+  geom_point()+
+  theme(aspect.ratio=1) 
+
+g_LP_PI <- ggplot(data = SPDF_exemple@data, aes(x=CSP_PI_15, y=P2017T1_LEPE)) +
+  geom_point()+
+  theme(aspect.ratio=1) 
+
+# Puis on appelle une nouvelle fonction, grid.arrange, qui permet de combiner des graphiques. Ici, on demande 2 lignes et 2 colonnes.
+grid.arrange(g_LP_CAD, g_LP_OUV, g_LP_EMP,g_LP_PI,
+             ncol=2, nrow = 2)
+
+```
+On constate que la part des cadres et des ouvriers par rapport au vote Le Pen dans les communes suivent une relation linéaire, avec cependant une "forme linéaire" moins nette pour les valeurs faibles de la part des cadres, à l'inverse de la part des ouvriers. La relation avec la part des employés suit globalement une ligne, mais assez diffuse (d'où un coefficient de corrélation plus faible). Aucune relation avec les professions intermédiaires n'apparaît en bivarié.
+
+**************************
+## 3.3 Régression linéaire
+**************************
+
+On décide de créer un modèle linéaire permettant d'expliquer le vote Le Pen dans le Val-de-Marne par la part des cadres. Il s'agit en effet de la relation bivarié la plus importante après analyse des coefficients de corrélation et des nuages de points.
+```{r 3.3_modele_cadre}
+
+# On stocke dans une variable modele le contenu de la fonction lm().
+modele1 <- lm(P2017T1_LEPE ~ CSP_CAD_15, 
+            data = SPDF_exemple@data) 
+
+# la fonction summary() fournit plusieurs informations sur le modèle 
+summary(modele1)
+
+```
+Comme abordé dans l'exercice 7 sur la régression, summary() nous indique que le r² ajusté est élevé (0.5854). Cela signifie que la variance de la part des cadres explique à 58.54% celle du vote pour Le Pen sur la zone d'étude. De plus, ce r² est significatif (p-value: 2.294e-10),
+
+Si on regarde les coefficients, on constante que lorsque la part des cadres baisse de -0.42845 points, la part du vote Le Pen augmente de 1. Enfin, la t-value de cette variable est significative dans le modèle (2.29e-10), ou plus simplement en regardant le nombre d’étoiles : ***
+
+## 3.4 Régression multiple
+
+On décide de compléter le modèle en y ajoutant d'autres variables explicatives. Ajouter toutes ou partie des variables à notre disposition ne garantit pas un très bon modèle mais il s'agit souvent d'une première étape. Le modèle va être complexe et plusieurs variables risquent d’expliquer le même phénomène. On parle de multicolinéarité. 
+De plus dans un modèle de régression multiple, il n'est pas nécessaire d'ajouter uniquement des variables fortement corrélées à Y si elles sont prises seules. Par exemple la part des retraités n'est pas significativement corrélée avec le vote Le Pen dans le 94, alors qu'elle pourrait l'être dans une relation multiple : vote Le Pen = part des cadres + part des retraités.
+
+************************
+### 3.4.1 modèle complet
+************************
+
+Un r² à 58,5 % sur la régression linéaire est plutôt correcte, mais on souhaite un modèle qui expliquera mieux ce vote. On crée donc une régression multiple en ajoutant toutes les variables CSP pour expliquer le vote Le Pen.
+```{r 3.4.1_modele_complet}
+
+# Pour cela, on ajoute avec le signe + les autres variables P2017T1_LEPE ~  variable 1 + variable2  + variable n
+modele_complet <- lm(P2017T1_LEPE ~ CSP_AGR_15+CSP_ARTI_15+CSP_OUV_15+CSP_EMP_15+CSP_CAD_15+CSP_PI_15+CSP_RET_15 ,
+            data = SPDF_exemple@data)
+
+summary(modele_complet)
+
+```
+Le modèle est grandement amélioré au niveau du r² : on passe de 0.5854 à 0.8472 et la p-value du r² est toujours significative. En revanche le modèle est complexe à cause du grand nombre de variables explicatives. 
+
+On regarde ensuite les coefficients de chaque variable. Leur signe semble correspondre à nos attentes pour les cadres : plus ils sont nombreux dans la commune, plus le vote Le Pen est faible. Inversement pour la part des ouvriers. 
+
+En revanche, la part des employés semble avoir changé de sens : en bivarié, plus leur part était importante, plus le vote Le Pen était fort. En multivarié et avec toutes les variables dans le modèle, ce sens a changé : -0.2582. Ce phénomène est probablement lié à une forte multicolinéarité (redondance) des variables explicatives entre elles.
+
+On constate que deux variables ne sont pas significatives dans le modèle : la part des artisans et des employés. La part des cadres est significative, mais uniquement à 10%. On décide donc d'enlever la variable la moins significative de notre modèle afin de voir comment ce dernier évolue. On enlève donc CSP_ARTI_15 (t-value = 0.5746).
+
+******************************
+### 3.4.2 Modèle à 6 variables
+******************************
+
+```{r 3.4.2_modele_3}
+
+# On enlève CSP_ARTI_15 du modèle
+modele_3 <- lm(P2017T1_LEPE ~ CSP_AGR_15+CSP_OUV_15+CSP_EMP_15+CSP_CAD_15+CSP_PI_15+CSP_RET_15 ,
+            data = SPDF_exemple@data)
+
+summary(modele_3)
+
+```
+On constante que le r² ajusté a augmenté avec 6 variables (0.8498) contre les 7 variables précédentes (0.8472). La part des cadres est maintenant significatives à 5% (0.02412 *), mais pas la part des employés. On décide donc de nouveau d'enlever la variable la moins significative de notre modèle : CSP_EMP_15
+
+******************************
+### 3.4.3 Modèle à 5 variables
+******************************
+
+```{r 3.4.3_modele_4}
+
+# On enlève CSP_EMP_15 du modèle
+modele_4 <- lm(P2017T1_LEPE ~ CSP_AGR_15+CSP_OUV_15+CSP_CAD_15+CSP_PI_15+CSP_RET_15 ,
+            data = SPDF_exemple@data)
+
+summary(modele_4)
+
+```
+Le r² a très peu changé (0.8498) et est toujours significatif. La part des cadres n'est plus significative, mais en regardant sa t-value, on remarque que sa valeur est de 11,1%. De plus le signe de tous les coefficients correspond à nos attentes. On pourrait conserver ce modèle, en expliquant que la part des cadres n'est pas significative mais avec des réserves. Pour plus de sécurité et surtout par curiosité scientifique, on décide de tester un modèle sans les cadres et de voir l'évolution du r²
+
+******************************
+### 3.4.4 Modèle à 4 variables
+******************************
+
+```{r 3.4.4_modele_5}
+
+# On enlève CSP_CAD_15 du modèle
+modele_5 <- lm(P2017T1_LEPE ~ CSP_AGR_15+CSP_OUV_15+CSP_PI_15+CSP_RET_15 ,
+            data = SPDF_exemple@data)
+
+summary(modele_5)
+
+```
+Le r² ajusté a baissé seulement d'un point (84 à 83%), le r² est significatif de même que toutes les variables du modèle. Les signes sont conformes à nos attentes. Néanmoins, on teste un dernier modèle, puisque la part des agriculteurs dans le Val-de-Marne n'est sans doute pas importante et peut complexifier un modèle d'un département à très large majorité urbain.
+
+******************************
+### 3.4.5 Modèle à 3 variables
+******************************
+
+```{r 3.4.5_modele_6}
+
+# On enlève CSP_CAD_15 du modèle
+modele_6 <- lm(P2017T1_LEPE ~ CSP_OUV_15+CSP_PI_15+CSP_RET_15 ,
+            data = SPDF_exemple@data)
+
+summary(modele_6)
+
+```
+On perd 3 points de r², mais on peut considérer que le modèle est plus simple à expliquer. 
+
+Il faut garder à l'esprit qu'une modélisation linéaire restera toujours une approche "calculée" de la réalité, sans jamais pouvoir s'en approcher totalement. On préfère un modèle simple et compréhensible à 3 variables plutôt qu'un modèle à 15 variables avec un excellent r² (et sans multicolinéarité...). Il existe même des modèles plus complexe que les modèles linéaires, mais qui sont parfois très mal adaptés à l'ajout de nouvelles données (overfitting).
+
+La création manuelle d'un modèle permet souvent d'obtenir un résultat facilement compréhensible. Cependant lorsque le nombre de variables de départ est trop important, il est parfois utile de laisser les logiciels de statistiques nous proposer différentes solutions.
+
+*********************************
+## 3.5 Sélection semi-automatique
+*********************************
+
+Il existe plusieurs façons de sélectionner des modèles dans R. Nous en utiliserons la plus commune, la stepwise procedure. L'idée est de créer deux modèles: 
+ * un premier modèle nul, qui ne comprend aucune variable explicative
+ * un second modèle complet, qui contient toutes les variables que vous voulez voir dans le modèle.
+ 
+La fonction step() va tester chaque combinaison possible de variables explicatives entre le modèle nul et le modèle complet et vous donner l'AIC. Vous pourrez ainsi choisir les modèles avec les plus faible AIC et les comparer :
+ * Le modèle avec l'AIC le plus faible lorsqu'une seule variable explicative est ajoutée (régression linéaire)
+ * le modèle avec l'AIC le plus faible avec 2 variables explicatives
+ * le modèle avec l'AIC le plus faible avec 3 variables explicatives
+ * ... le modèle avec l'AIC le plus faible avec n variables explicatives (n étant le nombre de variables dans votre modèle complet)
+
+****************************
+### 3.5.1 Stepwise procedure
+****************************
+
+```{r 3.5.1stewpwise}
+
+# On crée en premier modèle null,
+model.null = lm(P2017T1_LEPE ~ 1,
+                data=SPDF_exemple@data)
+
+# Et un second, avec toutes les variables explicatives qui nous intéressent
+model.full = lm(P2017T1_LEPE ~ CSP_AGR_15+CSP_ARTI_15+CSP_OUV_15+CSP_EMP_15+CSP_CAD_15+CSP_PI_15+CSP_RET_15,
+                data=SPDF_exemple@data)
+  
+# Enfin on lance la fonction step(), avec comme point de départ le model.null et comme point d'arrivée le modèle complet (model.full).
+step(model.null,
+     scope = list(upper=model.full),
+             direction="both",
+             data=SPDF_exemple@data)    
+
+# la fonction step() va alors tester les différentes combinaisons possibles à 1, puis 2, 3 jusqu'à n variables, en vous précisant à chaque fois le modèle avec le plus faible AIC.
+```
+Pour chaque combinaison possible de variable, on obtient le modèle avec le plus faible AIC. Par exemple, le meilleur modèle avec 2 variables est : 
+  Step:  AIC=66.38
+  P2017T1_LEPE ~ CSP_CAD_15 + CSP_PI_15
+
+à 4 variables : 
+  Step:  AIC=44.67
+  P2017T1_LEPE ~ CSP_CAD_15 + CSP_PI_15 + CSP_RET_15 + CSP_OUV_15
+
+
+A 3 variables, on obtient un modèle différent de celui fait manuellement : 
+  Step:  AIC=55.96
+  P2017T1_LEPE ~ CSP_CAD_15 + CSP_PI_15 + CSP_RET_15
+
+Le dernier modèle proposé est celui avec le plus faible AIC de toutes les combinaisons. Il est rappelé après le Call:
+
+  Call:
+  lm(formula = P2017T1_LEPE ~ CSP_CAD_15 + CSP_PI_15 + CSP_RET_15 + 
+      CSP_OUV_15 + CSP_AGR_15 + CSP_EMP_15, data = SPDF_exemple@data)
+
+Attention, cela ne veut pas dire que le dernier modèle est forcément celui à utiliser. step() ne propose qu'une aide et il faut vérifier qu'il n'y a pas de multicolinéarité. Pour cela on va vérifier la VIF (Variance Inflation Factor)
+
+***************************
+### 3.5.2 Multicollinéarité
+***************************
+
+Pour rappel, on souhaite éviter que la même information portée par plusieurs variables soit redondante dans notre modèle. Cette redondance, ou multicolinéarité, est mesurée par la VIF. On regarde la VIF max du modèle (une valeur par variable) et on ne conserve le modèle que si cette VIF max est inférieure à 7. 
+
+Pour cela, nous allons recopier les modèles avec les plus faibles AIC calculés précédemment avec step(). Vous pouvez faire un copier des résultats et les coller dans lm(). On stocke le résultat dans des variables, ici modeln ou n correspond au nombre de variables explicatives.
+
+On utilise ensuite la fonction vif() du package car pour vérifier les vif des modèles sélectionnés
+```{r 3.5.2VIF_step}
+
+# Le modèle avec le plus faible AIC avec 3 variables
+model3 <- lm(P2017T1_LEPE ~ CSP_CAD_15 + CSP_PI_15 + CSP_RET_15, data= SPDF_exemple@data)
+vif(model3)
+
+# Avec 4 variables
+model4 <- lm(P2017T1_LEPE ~ CSP_CAD_15 + CSP_PI_15 + CSP_RET_15 + CSP_OUV_15, data= SPDF_exemple@data)
+vif(model4)
+
+# Avec 5 variables
+model5 <- lm(P2017T1_LEPE ~ CSP_CAD_15 + CSP_PI_15 + CSP_RET_15 + CSP_OUV_15 + CSP_AGR_15, data= SPDF_exemple@data)
+vif(model5)
+
+# et 6 variables
+model6 <- lm(P2017T1_LEPE ~ CSP_CAD_15 + CSP_PI_15 + CSP_RET_15 + CSP_OUV_15 + CSP_AGR_15 + CSP_EMP_15, data= SPDF_exemple@data)
+vif(model6)
+
+```  
+On constate que seul le premier modèle à 3 variables possède une VIF max inférieure à 7 (1.09). Le modèle à 4 variables possède un VIF max de 8.99 (ce qui est limite, mais peut néanmoins être acceptable si le modèle est très intéressant).
+
+Enfin, le modèle choisi par la fonction step() (à 6 variables) n'est pas utilisable : il possède certe l'AIC la plus faible, mais les variables explicatives sont trop redondantes.
+
+On décide de conserver le modèle à 3 variables avec le plus faible AIC et de vérifier : 
+
+* son r²
+* sa significativité
+* le signe des coefficients
+* la significativité des coefficients (t-value)
+
+*********************************
+## 3.6 Validation du modèle final
+*********************************
+
+On applique summary sur le modèle 3, qui pour rappel modélise le vote Le Pen en fonction de la part des cadres, des professions intermédiaires et des retraités dans les communes du Val-de-Marne.
+
+```{r 3.6.summary}
+summary(model3)
+```
+Le r² du modèle est significatif de même que toutes les variables qui le composent. En revanche, ce r² est inférieur au r² du modèle calculé manuellement : 0.76 vs 0.8. Cela n'est pas montré ici, mais cela s'explique aussi parce que la VIF du modèle manuelle est un peu plus élevée que celle du modèle choisi par step().
+
+La plupart du temps, vous ne ferez pas une sélection semi-automatique ET une sélection manuelle. Vous ferrez soit l'un, soit l'autre. La solution de facilité reste la sélection semi-automatique, mais ce n'est pas toujours le modèle ayant le meilleur r² qui sera retenue. De plus, si vous avez beaucoup de variables explicatives et d'entités géographiques, la procédure peut être très longue. Il est donc parfois nécessaire de faire un tri dans vos variables avant de lancer step().
+
+## 3.6.1 Validation des résidus
+Pour finir, il faut de valider les résidus. Pour vous simplifier cette étape, une fonction a été créée, comme pour la régression linéaire. Elle permet simplement de vérifier l’homoscédasticité, la normalité et l'absence d'autocorrélation des résidus. Il existe aussi des tests statistiques pour ce type d'opération, mais nous nous contenterons d'une approche "visuelle" à votre niveau. La fonction permet également de créer un dataframe avec les résidus du modèle (le vote Le Pen prévu par votre modèle comparé au vote Le Pen observé) et donc de cartographier ces résidus.
+
+Vous n'avez pas à modifier le bloc de code ci-dessous. Il faut simplement la charger en lançant le bloc de code. Il s'agit de la fonction ALLlm_multiple(). Elle sera appelée dans le bloc de code suivant.
+
+```{r 3.6.1.ALLlm_multiple}
+
+ALLlm_multiple <- function (Dataframe,CODGEO,Variables_X,Variable_Y,Nom_DF_Residus) {
+  
+  # On stocke dans une variable modele le contenu de la fonction lm().
+  modele <- lm( paste(Variable_Y," ~ ",paste(Variables_X, collapse="+"),sep = ""),data = Dataframe) 
+  
+  # la fonction summary() fournit plusieurs informations sur le modèle 
+  sum1 <- summary(modele)
+  
+  ## le dataframe avec les résidus
+  df.residus <- data.frame(CODGEO,modele$model)
+  
+  # On en profite pour ajouter une colonne ID qui contient les numéros des lignes. Elle servira aux jointures suivantes.
+  df.residus$ID <- rownames(df.residus)
+  
+  # On fait une jointure avec merge() entre le dataframe précédent et les valeurs calculées du modèle.
+  df.residus <- merge(x=df.residus, y=as.data.frame(modele$fitted.values),by.x = "ID",by.y=  0)
+  
+  #On renomme la colonne modele$fitted.values qui vient d'être créée
+  df.residus <- dplyr::rename(.data = df.residus, Ycalcules = `modele$fitted.values`)
+  
+  # On refait la même chose pour avoir les résidus dans notre dataframe. 
+  df.residus <- merge(x=df.residus,y=as.data.frame(modele$residuals),by.x = "ID",by.y=  0)
+  
+  #On renomme également la colonne modele$residuals qui vient d'être créée.
+  df.residus <- dplyr::rename(.data = df.residus,Residus = `modele$residuals`)
+  
+  # Vérification de la normalité
+  gg2 <- ggplot(df.residus, aes(x = Residus)) + geom_histogram(aes(y =..density..),colour = "black", fill = "white")+
+    xlim(c(-max(df.residus$Residus),max(df.residus$Residus)))+
+    stat_function(fun = dnorm,args = list(mean = mean(df.residus$Residus), sd = sd(df.residus$Residus)),color = "red" )+
+    ggtitle(paste("Normalité des résidus"))
+  
+  # On crée un objet ggplot() avec en x les résidus, en y les identifiants des lignes. 
+  gg3 <- ggplot(df.residus, aes(y=Residus,x=ID, fill = Residus)) +
+    geom_point(shape=21, size =4)+ 
+    geom_hline(yintercept = 0)+ 
+    theme(axis.text.x=element_text(angle=90, hjust=1))+  
+    scale_fill_gradient2(low="darkgreen", mid="white", high="darkred")+
+    theme(axis.title.x=element_blank(),axis.text.x=element_blank(),axis.ticks.x=element_blank())+
+    ggtitle(paste("Répartition des résidus"))
+  
+  # ajout du dataframe des résidus comem variable globale
+  NomDFResidus <- as.character(Nom_DF_Residus)
+  df.residus <- dplyr::select(df.residus, -c(ID)) 
+  assign(NomDFResidus, df.residus, envir=.GlobalEnv)
+  
+  # VIF
+  VIF <- paste("VIF max. du modèle :", round(max(vif(modele)),1))
+  
+return (list(sum1,VIF,gg2,gg3))
+}
+
+```
+
+Après avoir chargé la fonction précédente, vous pouvez l'appeler. Il vous suffira de changer les arguments ci-dessous et de lancer le bloc de code. Pour le moment, contentez-vous de lancer le bloc de code sans le modifier afin de regarder les résultats de la fonction
+```{r 3.6.2.Appel_ALLlm_multiple}
+
+ALLlm_multiple(Dataframe = SPDF_exemple@data, # Le dataframe qui contient les données
+      CODGEO = SPDF_exemple@data$INSEE_COM, # la colonne du dataframe qui contient les codes  des communes
+      Variables_X = c("CSP_CAD_15","CSP_PI_15","CSP_RET_15"), # La liste des variables explicatives
+      Variable_Y = "P2017T1_LEPE", # La variable a expliquer
+      Nom_DF_Residus = "df.residus_RegMultiple") # Le nom du dataframe qui contiendra les résidus.
+```
+Trois fenêtres s'ouvrent : 
+
+*La première contient les résultats du summary de votre modèle, c'est à dire le r2 ajusté, sa p-value, et les caractéristiques de chaque variable du modèle. En dessous, vous trouverez également la VIF max de votre modèle. Les résultats sont ceux déjà montrés dans les exemples précédents.
+
+*La seconde fenêtre permet de valider la normalité des résidus. La courbe rouge correspond à la distribution des résidus s'ils suivaient une loi normale. Les barres des histogrammes correspondent aux résidus. Pour le modèle choisi, on constate que la normalité est somme toute relative, même si on retrouve plus de résidus proches de la moyenne (c'est à dire 0) et moins aux extrémités. Il faut toutefois rappeler qu'il n'y a que 47 communes dans le Val-de-Marne.
+
+*La troisième fenêtre permet de vérifier l'homoscédasticité des résidus, c'est à dire qu'ils se répartissent parallèlement par rapport à l'axe des valeurs observées - valeurs calculées = 0. Il n'y a pas de forme d'entonnoir particulière ici, ce qui permet de valider visuellement cette homoscédasticité. De plus, on en profite pour vérifier l'absence d'autocorrélation statistiques des résidus, c’est à dire que les résidus forment une courbe concave ou convexe. Plus rare en régression multiple qu'en régression linéaire, elle traduit souvent une relation non linéaire entre x et y. Dans notre cas, aucune autocorrélation n'apparait.
+
+On peut donc valider le modèle qui explique à 76,6% la variance du % de vote Le Pen dans le Val-de-Marne au 1er tour des élections présidentielles 2017 par les variables : 
+
+  %Vote Le Pen = -0.50 x part des cadres + 0.56 x part des professions intermédiaires + 0.29 x part des retraités.
+
+Ce modèle est sans aucun doute améliorable, en ajoutant par exemple le taux de chômage ou le niveau d'éducation. Avec un r² proche de 0.90, on pourrait même tenter de l'appliquer à d'autres zone d'étude ou faire des prédictions.
+
+Pour finir, nous allons cartographier les résidus afin de voir si leur répartition spatiale est globalement aléatoire ou si les faibles/forts résidus se concentrent à des endroits particuliers du Val-de-Marne. Si c'était le cas, on pourrait chercher d'autres variables explicatives, très liées à ces lieux. Un nouveau modèle pourrait alors être créé avec cette nouvelle variable.
+
+*******************************
+## 3.7 Cartographie des résidus
+*******************************
+
+Avant de cartographier les résidus, nous allons rapidement produire la carte du vote Le Pen dans le Val-de-Marne, sans pousser l'esthétisme de la carte pour le moment. On cartographie le vote avec la méthode q6 pour pouvoir comparer les cartes. Il s'agit de quantile qui isolent les 5 premiers et 5 derniers %.
+```{r 3.7.3VoteLePen}
+
+choroLayer(spdf = SPDF_exemple, #Le dataframe géographique
+        var = "P2017T1_LEPE", # La variable à cartographier
+        method = "q6", # la méthode de discrétisation : "sd", "equal", "quantile", "fisher-jenks","q6"
+        col = brewer.pal(6, "YlOrBr"), #la palette de couleur.  
+        border = "grey20", lwd = 1, # la couleur de bordure des polygones
+        legend.pos = "bottomright", # La position de la légende 
+        legend.title.txt = "% Vote Le Pen", #
+        legend.frame = FALSE #Un contours sur la légende ? TRUE / FALSE
+        )
+
+layoutLayer(title = "Le vote pour M. Le Pen au 1er tour des présidentielles 2017 dans le Val-de-Marne", 
+            sources = "Sources: Ministère de l’Intérieur 2017, IGN 2019",
+            author = "F.Bayer", 
+            frame = TRUE, # Un contours sur la carte, TRUE ou FALSE
+            north = FALSE, # On n'affiche pas le nord 
+            col = "#cdd2d4", # La couleur de fond derrière le titre
+            coltitle = "#8A5543",# La couleur de la police du texte
+            scale = 1 # La taille de l'échelle, en km
+            )   
+
+```
+
+Puis on produit la carte du vote prédit par la régression multiple
+```{r 3.7.2VoteLePen_calcule}
+
+#On joint les communes au dataframe des résidus calculés par la fonction ALLlm_multiple()
+
+SPDF_residus <- dplyr::inner_join(x=L93_COM_2018, 
+                                  y=df.residus_RegMultiple,
+                                  by = c("INSEE_COM"="CODGEO"))
+
+choroLayer(spdf = SPDF_residus, #Le nouveau dataframe géographique
+        var = "Ycalcules", # La variable à cartographier, ici Ycalcules
+        method = "q6", 
+        col = brewer.pal(6, "YlOrBr"), 
+        border = "grey20", lwd = 1, 
+        legend.pos = "bottomright", 
+        legend.title.txt = "% Vote Le Pen", 
+        legend.frame = FALSE 
+        )
+
+layoutLayer(title = "Le vote pour M. Le Pen calculé par notre modèle", 
+            sources = "Sources: Ministère de l’Intérieur 2017, IGN 2019",
+            author = "F.Bayer", 
+            frame = TRUE, 
+            north = FALSE, 
+            col = "#cdd2d4", 
+            coltitle = "#8A5543",
+            scale = 1 
+            )   
+
+```
+
+Les répartitions sont assez semblables malgré quelques différences. Pour mieux les visualiser, on cartographie les résidus. 
+
+Attention, afin de garantir une représentation juste sur la carte, quelques modifications ont été faites dans la discrétisation. Pensez à bien reprendre le code suivant lors de la cartographie de vos résidus. Ne modifiez rien pour l'exemple, mais les éléments que vous pourrez modifier pour vos propres données sont notés avec : # <-- Mettez à jour 
+
+```{r 3.7.3.residus}
+
+var <- SPDF_residus@data$Residus  # <-- Mettez à jour le spdf, celui qui contient le fond de carte et les Données. Laissez néanmoins la partie @data$Residus. Par exemple : spdf_residus_Ma_Super_Relation@data$Residus
+
+
+############################ NE PAS MODIFIER !! ############################ 
+# La méthode de discrétisation. Ne pas modifier
+## On discrétise en moyenne écart type pour les résidus. On fait en sorte que la moyenne soit centre de classe.
+## On stocke dans des variables les paramètres univariées pour simplifier la lecture du code
+var_moy <- mean(var)
+var_sd <- sd(var)
+var_moy_p05 <- var_moy + var_sd*0.5
+var_moy_m05 <- var_moy -var_sd*0.5
+var_moy_p15 <- var_moy + var_sd*1.5
+var_moy_m15 <- var_moy -var_sd*1.5
+var_min <-min (var)
+var_max <- max(var)
+# On stocke les bornes de classes dans breaks Ne pas modifier
+breaks <- c(var_min,var_moy_m15,var_moy_m05,var_moy_p05,var_moy_p15,var_max)
+# On enlève les variables précédentes qui ne servent plus. Ne pas modifier
+rm(var_moy,var_sd,var_moy_p05,var_moy_m05,var_moy_p15,var_moy_m15,var_min,var_max)
+# La palette des couleurs. Ne pas modifier
+palette <- carto.pal(pal1="green.pal", n1 = 2, pal2 = "pink.pal", n2 = 2, middle = TRUE,transparency = FALSE)
+################# Fin de l'interdiction de modification ################# 
+
+choroLayer(spdf = SPDF_residus,  # <-- Mettez à jour le dataframe  
+          var = "Residus",
+          breaks= breaks,
+          col = palette,
+          border = "grey70",
+          lwd = 0.5, 
+          legend.pos = "right", # <-- Mettez à jour la position de la légende : "topleft", "top", "topright", "right", "bottomright", "bottom", "bottomleft", "left"
+          legend.title.txt = "Résidus", 
+          legend.frame = FALSE, 
+          legend.border = "black", 
+          legend.horiz = FALSE
+          )
+
+###########################
+# On rajoute layoutLayer()
+###########################
+
+layoutLayer(title = "Ecart entre le vote Le Pen observé et modélisé", 
+            sources = "Sources: Ministère de l'intérieur 2017, IGN 2019",
+            author = "F.Bayer", 
+            frame = TRUE, 
+            north = FALSE, 
+            col = "#cdd2d4", 
+            coltitle = "#8A5543",
+            scale = 1 # La taille de l'échelle, en km
+            )   
+
+```
+
+ON constate que les résidus les plus forts sont au sud du Val-de-Marne, dans les communes proches d'Orly. Cela signifie que le modèle sous-estime fortement la réalité dans cet espace, marqué par un fort vote Le Pen (entre 18 et 20%, cf. carte du vote). Il s'agit de villes où le taux de chômage est un peu plus élevés. Cette variable pourrait alors être ajouté au modèle de régression linéaire. On pourrait alors voir si les résidus baissent sur cette zone.
+
+*****************************
+# 4 Votre régression multiple
+*****************************
+
+Vous disposez maintenant de tous les éléments pour créer vous-même une régression multiple. Voici quelques conseils : 
+*prenez le temps de réfléchir à vos variables. Une analyse bivariée en amont vous évitera d'ajouter des variables très corrélées (le pnb et le pib par exemple).
+*Vous pourrez aussi détecter des relations non linéaires et si besoin, transformer les variables. Par exemple en passant en logarithme.
+*Ajustez le modèle pour le rendre plus simple si besoin, quitte à perdre quelques points de r².
+*Vous pouvez utiliser la sélection semi-automatique, mais n'hésitez pas à y apportez quelques changements si besoin. 
+*Utilisez la fonction ALLlm_multiple() qui vous permettra de tester rapidement plusieurs modèles.
+*N'oubliez pas de cartographier vos variables et vos résidus.
+
+
+Les principales étapes sont listées ci-dessous pour vous aider. N'hésitez pas à adapter la démarche si besoin
+
+*****************************
+## 4.1 Chargement des données
+*****************************
+```{r 4.1.import}
+
+###### !!!!! On supprime toutes les variables présentes ######
+rm(list=ls())
+##############################################################
+
+# On charge au moins les SPDF des fonds carto
+load(unzip("L93_GEO_2018.zip", files="L93_GEO_2018.RData"))
+
+# Chargez ensuite le dataframe qui contient vos variables. Si ce n'est pas encore fait, réalisé une jointure entre le SPDF communes et votre dataframe
+SPDF_analyse <- dplyr::inner_join(x=L93_COM_2018, 
+                                  y= CSP2015, # <- ajoutez le dataframe qui contient vos données
+                                  by = c("INSEE_COM"="INSEE_CODE")) # pensez à mettre à jour les codes insee si besoin
+
+
+```
+
+On en profite pour charger la fonction ALLlm_multiple(), qui nous servira plus tard. Ne modifiez rien.
+```{r 4.1.ALLlm_multiple}
+
+############################ NE PAS MODIFIER !! ############################ 
+ALLlm_multiple <- function (Dataframe,CODGEO,Variables_X,Variable_Y,Nom_DF_Residus) {
+  
+  # On stocke dans une variable modele le contenu de la fonction lm().
+  modele <- lm( paste(Variable_Y," ~ ",paste(Variables_X, collapse="+"),sep = ""),data = Dataframe) 
+  
+  # la fonction summary() fournit plusieurs informations sur le modèle 
+  sum1 <- summary(modele)
+  
+  ## le dataframe avec les résidus
+  df.residus <- data.frame(CODGEO,modele$model)
+  
+  # On en profite pour ajouter une colonne ID qui contient les numéros des lignes. Elle servira aux jointures suivantes.
+  df.residus$ID <- rownames(df.residus)
+  
+  # On fait une jointure avec merge() entre le dataframe précédent et les valeurs calculées du modèle.
+  df.residus <- merge(x=df.residus, y=as.data.frame(modele$fitted.values),by.x = "ID",by.y=  0)
+  
+  #On renomme la colonne modele$fitted.values qui vient d'être créée
+  df.residus <- dplyr::rename(.data = df.residus, Ycalcules = `modele$fitted.values`)
+  
+  # On refait la même chose pour avoir les résidus dans notre dataframe. 
+  df.residus <- merge(x=df.residus,y=as.data.frame(modele$residuals),by.x = "ID",by.y=  0)
+  
+  #On renomme également la colonne modele$residuals qui vient d'être créée.
+  df.residus <- dplyr::rename(.data = df.residus,Residus = `modele$residuals`)
+  
+  # Vérification de la normalité
+  gg2 <- ggplot(df.residus, aes(x = Residus)) + geom_histogram(aes(y =..density..),colour = "black", fill = "white")+
+    xlim(c(-max(df.residus$Residus),max(df.residus$Residus)))+
+    stat_function(fun = dnorm,args = list(mean = mean(df.residus$Residus), sd = sd(df.residus$Residus)),color = "red" )+
+    ggtitle(paste("Normalité des résidus"))
+  
+  # On crée un objet ggplot() avec en x les résidus, en y les identifiants des lignes. 
+  gg3 <- ggplot(df.residus, aes(y=Residus,x=ID, fill = Residus)) +
+    geom_point(shape=21, size =4)+ 
+    geom_hline(yintercept = 0)+ 
+    theme(axis.text.x=element_text(angle=90, hjust=1))+  
+    scale_fill_gradient2(low="darkgreen", mid="white", high="darkred")+
+    theme(axis.title.x=element_blank(),axis.text.x=element_blank(),axis.ticks.x=element_blank())+
+    ggtitle(paste("Répartition des résidus"))
+  
+  # ajout du dataframe des résidus comem variable globale
+  NomDFResidus <- as.character(Nom_DF_Residus)
+  df.residus <- dplyr::select(df.residus, -c(ID)) 
+  assign(NomDFResidus, df.residus, envir=.GlobalEnv)
+  
+  # VIF
+  VIF <- paste("VIF max. du modèle :", round(max(vif(modele)),1))
+  
+return (list(sum1,VIF,gg2,gg3))
+}
+################# Fin de l'interdiction de modification ################# 
+
+```
+
+*******************
+## 4.2 corrélations
+*******************
+
+Analysez ensuite les corrélations entre vos variables. Notez déjà les variables explicatives qui sont très corrélées (|>0.9|) afin de n'en garder qu'une seule.
+```{r 4.2.1correlation_BP}
+df <- SPDF_analyse@data # <- SPDF_analyse@data est le dataframe qui contient vos Données. C'est le seul élément à modifier ici si vous l'avez nommé autrement. N'oubliez pas le @data
+
+############################ NE PAS MODIFIER !! ############################ 
+df <- df[, !sapply(df, is.character)] # On enlève les colonnes qui ne sont pas (!) des characters
+df <- df %>% na.omit() # Et on enlève les lignes avec des données manquantes
+df <- df[!is.infinite(rowSums(df)),] # ou qui ont des valeurs inf, souvent liées à une division par zéro
+rcorr(x = as.matrix(df), 
+      type = "pearson") # le coefficient de corrélation de Bravais-Pearson
+################## Fin de l'interdiction de modification ################## 
+
+```
+
+On regarde ensuite les nuages de points pour les variables qui vous semblent pertinentes (x) par rapport à la variable à expliquer (y)
+```{r 4.2.1.NuagesPoints}
+
+# Créez autant de graphiques que de colonnes à analyser. 
+
+# Modifiez si besoin le paramètre data, vos x et votre y. Nommez intuitivement les variables qui stockeront vos graphiques.
+g_LP_CAD <- ggplot(data = SPDF_analyse@data, aes(x=CSP_CAD_15, y=P2017T1_LEPE)) +
+  geom_point()+
+  theme(aspect.ratio=1) 
+
+g_LP_OUV <- ggplot(data = SPDF_analyse@data, aes(x=CSP_OUV_15, y=P2017T1_LEPE)) +
+  geom_point()+
+  theme(aspect.ratio=1) 
+
+
+# Ajoutez les variables dans grid.arrange() pour les voir sur le même graphique.
+grid.arrange(g_LP_CAD, g_LP_OUV, 
+             ncol=2, nrow = 2)
+
+```
+
+**************************
+## 4.3 régression multiple
+**************************
+
+Vous avez le choix dans la création du modèle : manuellement ou par sélection semi-automatique. Je vous conseille dans un premier temps la sélection semi-automatique. Vous verrez ainsi très rapidement si votre modèle peut être viable ou pas (autrement dit, si le r² ajusté n'est pas trop bas). Vous pourrez ensuite l'adapter si besoin.
+
+Néanmoins, si vous voulez tester directement un modèle sans passer par la sélection semi-automatique, passez directement au point 4.3.2 et testez le modèle qui correspond à vos hypothèses. Par exemple : le vote Le Pen pourrait s'expliquer par la part des cadres, des professions intermédiaires et des retraités.
+
+******************
+### 4.3.1 stepwise
+******************
+
+Le bloc de code ci-dessous reprend la méthode semi-automatique avec stepwise
+```{r 4.3.stewpwise}
+
+# On crée en premier modèle null,
+model.null = lm(P2017T1_LEPE ~ 1,  # <- mettez à jour le nom de la variable à expliquer
+                data=SPDF_analyse@data) # <- mettez à jour le nom du spatial dataframe si besoin
+
+# Et un second, avec toutes les variables explicatives qui nous intéressent. De nouveau, mettez à jour le nom de la variable à expliquer et ajoutez les variables explicatives qui vous intéressent (remplacez variable1, variable2 et ajoutez-en si nécessaire. N'oubliez pas le + entre les variables). N'ajoutez pas non plus 50 variables. Vous aurez du mal à l'analyser et le calcul pourra être très long.
+
+model.full = lm(P2017T1_LEPE ~ variable1+variable2  , 
+                data=SPDF_analyse@data) # <- mettez à jour le nom du spatial dataframe si besoin
+  
+# Enfin on lance la fonction step(), avec comme point de départ le model.null et comme point d'arrivée le modèle complet (model.full).
+step(model.null,
+     scope = list(upper=model.full),
+             direction="both",
+             data=SPDF_analyse@data)  # <- mettez juste à jour le nom du spatial dataframe si besoin
+
+```
+
+Regardez le ou les modèles avec l'AIC le plus faible. Vous pouvez ensuite les tester grâce à la fonction ALLlm_multiple  : 
+*r² ajusté et signe des coefficients des variables
+*leurs significativités
+*VIF max du modèle
+*validation des résidus
+
+Pour cela on appelle ALLlm_multiple() pour chaque modèle
+
+*****************************
+### 4.3.2 Analyse des modèles
+*****************************
+Pour le premier modèle qui vous intéresse:
+```{r 4.3.2.model1}
+ALLlm_multiple(Dataframe = SPDF_analyse@data, # <- mettez juste à jour le nom du spatial dataframe si besoin
+      CODGEO = SPDF_analyse@data$INSEE_COM, # la colonne du dataframe qui contient les codes communes
+      Variables_X = c("CSP_CAD_15","CSP_PI_15","CSP_RET_15"), # La liste des variables explicatives du modèle à tester
+      Variable_Y = "P2017T1_LEPE", # La variable a expliquer
+      Nom_DF_Residus = "df.residus_model1") # Le nom du dataframe qui contiendra les résidus.
+```
+
+Pour le second modèle qui vous intéresse:
+```{r 4.3.2.model2}
+ALLlm_multiple(Dataframe = SPDF_analyse@data, # <- mettez juste à jour le nom du spatial dataframe si besoin
+      CODGEO = SPDF_analyse@data$INSEE_COM, # la colonne du dataframe qui contient les codes communes
+      Variables_X = c("CSP_CAD_15","CSP_PI_15","CSP_RET_15"), # La liste des variables explicatives du modèle à tester
+      Variable_Y = "P2017T1_LEPE", # La variable a expliquer
+      Nom_DF_Residus = "df.residus_model2") # Le nom du dataframe qui contiendra les résidus.
+```
+
+etc.
+
+********************************
+### 4.4 Cartographie des résidus
+********************************
+
+Une fois votre modèle validé, vous pouvez cartographier ses résidus. Je vous conseille aussi de cartographier la variable à expliquer et les variables explicatives, mais cela aura déjà été fait en amont de votre dossier...
+
+```{r 4.4.Carto.residus}
+
+#Dans un premier temps, on fait la jointure entre les résidus calculés par la fonction ALLlm_multiple() et le fond de carte des communes
+
+SPDF_residus <- dplyr::inner_join(x=L93_COM_2018, 
+                                  y=df.residus_model1, # <- Le nom du dataframe qui contient les résidus. Cf. fonction ALLlm_multiple()
+                                  by = c("INSEE_COM"="CODGEO")) # vérifiez que les codes sont les bons pour la jointure
+
+var <- SPDF_residus@data$Residus  # <-- Si besoin, mettez à jour le spdf, celui qui contient le fond de carte et les données. 
+
+
+############################ NE PAS MODIFIER !! ############################ 
+# La méthode de discrétisation. Ne pas modifier
+## On discrétise en moyenne écart type pour les résidus. On fait en sorte que la moyenne soit centre de classe.
+## On stocke dans des variables les paramètres univariées pour simplifier la lecture du code
+var_moy <- mean(var)
+var_sd <- sd(var)
+var_moy_p05 <- var_moy + var_sd*0.5
+var_moy_m05 <- var_moy -var_sd*0.5
+var_moy_p15 <- var_moy + var_sd*1.5
+var_moy_m15 <- var_moy -var_sd*1.5
+var_min <-min (var)
+var_max <- max(var)
+# On stocke les bornes de classes dans breaks Ne pas modifier
+breaks <- c(var_min,var_moy_m15,var_moy_m05,var_moy_p05,var_moy_p15,var_max)
+# On enlève les variables précédentes qui ne servent plus. Ne pas modifier
+rm(var_moy,var_sd,var_moy_p05,var_moy_m05,var_moy_p15,var_moy_m15,var_min,var_max)
+# La palette des couleurs. Ne pas modifier
+palette <- carto.pal(pal1="green.pal", n1 = 2, pal2 = "pink.pal", n2 = 2, middle = TRUE,transparency = FALSE)
+################# Fin de l'interdiction de modification ################# 
+
+
+
+#####################################
+# Les contours et limites de la carte
+#####################################
+
+ZoneEtude <- c("67","68") # <--  Mettez à jour les codes départements de votre zone d'étude. La variable ZoneEtude sera appelée plusieurs fois dans le code suivant et vous n'aurez pas à modifier votre sélection à chaque fois
+
+# Les marges de la carte. N'y touchez pas
+opar <- par(mar = c(0,0,1.2,0))
+
+# L'emprise de votre zone d'étude et la couleur de l'océan
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% ZoneEtude), 
+     col=NA, 
+     border=NA, 
+     bg = "lightblue1") 
+
+# Ajout des pays européens limitrophes 
+plot(L93_EUR_2018,
+     add=TRUE, 
+     col="grey95", 
+     border= NA,
+     lwd = 0.15)
+
+# Le contours des départements
+plot(L93_DEP_2018, 
+     add=TRUE, 
+     col="#F1EEE8", 
+     border="#8A5543",
+     lwd = 0.15)
+
+# Le contours des communes
+plot(SPDF_residus, # <- Mettez à jour le dataframe, celui qui contient le fond de carte et les Données
+     col="#f5f5f3ff", 
+     border="#a9b3b4ff",  
+     lwd = 0.15,
+     add=TRUE
+     )  
+
+
+#########################
+# On rajoute ChoroLayer()
+#########################
+
+choroLayer(spdf = SPDF_residus,  # <-- Si besoin, mettez à jour le dataframe  
+          var = "Residus",
+          breaks= breaks,
+          col = palette,
+          border = "grey70",
+          lwd = 0.5, 
+          legend.pos = "right", # <-- Mettez à jour la position de la légende : "topleft", "top", "topright", "right", "bottomright", "bottom", "bottomleft", "left"
+          legend.title.txt = "Résidus", 
+          legend.frame = FALSE, 
+          legend.border = "black", 
+          legend.horiz = FALSE,
+          add = TRUE
+          )
+
+# Le contours de votre zone d'étude
+plot(dplyr::filter(L93_DEP_2018, INSEE_DEP %in% ZoneEtude), 
+     add=TRUE, 
+     col=NA, 
+     border="#8A5543"
+     ) 
+
+###########################
+# On rajoute layoutLayer()
+###########################
+
+layoutLayer(title = "Titre de la carte", 
+            sources = "Sources: Ministère de l'intérieur 2017, IGN 2019",
+            author = "Votre nom", 
+            frame = TRUE, 
+            north = FALSE, 
+            col = "#cdd2d4", 
+            coltitle = "#8A5543",
+            scale = 25 # La taille de l'échelle, en km
+            )   
+
+```
+
+Félicitations, vous avez réalisé votre première régression multiple ! Ce type d'outil est très prisé aujourd'hui, notamment en data science, machine learning et intelligence artificielle.
