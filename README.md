@@ -1,5 +1,5 @@
 # r_carto
-Cours créés en 2018 pour le cours d'analyse de données et représentation cartographique, L3 Géographie Université Paris 1 Panthéon Sorbonne.
+Cours créés en 2019 pour le cours d'analyse de données et représentation cartographique, L3 Géographie Université Paris 1 Panthéon Sorbonne.
 
 Contient des fiches de cours au format RMD pour apprendre à utiliser R, Rstudio et certaines packages en cartographie et analyse de données.
 
